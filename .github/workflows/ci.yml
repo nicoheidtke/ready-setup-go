@@ -1,0 +1,91 @@
+name: Installer validation
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  unit:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.4'
+          cache: false
+      - run: go test ./...
+      - run: go vet ./...
+  integration:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux/amd64
+          - os: ubuntu-24.04-arm
+            platform: linux/arm64
+          - os: macos-15-intel
+            platform: darwin/amd64
+          - os: macos-15
+            platform: darwin/arm64
+          - os: windows-2025
+            platform: windows/amd64
+          - os: windows-11-arm
+            platform: windows/arm64
+    runs-on: ${{ matrix.os }}
+    env:
+      GOTOOLCHAIN: local
+      GOTELEMETRY: 'off'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.4'
+          cache: false
+      - name: Package native executable
+        run: go run ./cmd/package --platform '${{ matrix.platform }}'
+      - name: Cold install through composite launcher
+        id: cold
+        uses: ./dist
+        env:
+          RUNNER_TOOL_CACHE: ''
+          RUNNER_TEMP: ${{ runner.temp }}/installer smoke with spaces
+        with:
+          go-version: '1.26.0'
+      - name: Compile and test with selected toolchain
+        shell: bash
+        working-directory: testdata/smoke
+        run: |
+          test "$(go env GOVERSION)" = 'go1.26.0'
+          go build ./...
+          go test ./...
+      - name: Test well-known dependencies with selected toolchain
+        working-directory: testdata/packages
+        run: go test -mod=readonly -count=1 ./...
+      - name: Reuse through Node launcher with network disabled
+        id: warm
+        uses: ./dist/experimental/node
+        env:
+          RUNNER_TOOL_CACHE: ''
+          RUNNER_TEMP: ${{ runner.temp }}/installer smoke with spaces
+          HTTP_PROXY: http://127.0.0.1:1
+          HTTPS_PROXY: http://127.0.0.1:1
+          NO_PROXY: ''
+        with:
+          go-version: '1.26.0'
+          check-latest: 'true'
+      - name: Check action outputs
+        shell: bash
+        env:
+          COLD_ROOT: ${{ steps.cold.outputs.goroot }}
+          WARM_ROOT: ${{ steps.warm.outputs.goroot }}
+          WARM_VERSION: ${{ steps.warm.outputs.go-version }}
+        run: |
+          test "$COLD_ROOT" = "$WARM_ROOT"
+          test "$WARM_VERSION" = '1.26.0'

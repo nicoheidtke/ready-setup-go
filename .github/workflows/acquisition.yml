@@ -1,0 +1,55 @@
+name: Manual action acquisition experiment
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        type: choice
+        options: [ubuntu-24.04, ubuntu-24.04-arm, macos-15-intel, macos-15, windows-2025, windows-11-arm]
+        default: ubuntu-24.04
+      bundle-url:
+        description: Immutable public HTTPS bundled.zip asset URL
+        required: true
+      bundle-sha256:
+        description: Expected SHA-256 of bundled.zip
+        required: true
+      launcher-url:
+        description: Immutable public HTTPS launcher.zip asset URL
+        required: true
+      launcher-sha256:
+        description: Expected SHA-256 of launcher.zip
+        required: true
+      binary-url:
+        description: Immutable public HTTPS native binary URL matching the runner
+        required: true
+      binary-sha256:
+        description: Expected SHA-256 of native binary
+        required: true
+permissions:
+  contents: read
+jobs:
+  acquisition:
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.4'
+          cache: false
+      - name: Measure 20 paired acquisitions
+        shell: bash
+        env:
+          BUNDLE_URL: ${{ inputs.bundle-url }}
+          BUNDLE_SHA: ${{ inputs.bundle-sha256 }}
+          LAUNCHER_URL: ${{ inputs.launcher-url }}
+          LAUNCHER_SHA: ${{ inputs.launcher-sha256 }}
+          BINARY_URL: ${{ inputs.binary-url }}
+          BINARY_SHA: ${{ inputs.binary-sha256 }}
+        run: |
+          go run ./cmd/acquisition --samples 20 --out acquisition.json \
+            --bundle-url "$BUNDLE_URL" --bundle-sha256 "$BUNDLE_SHA" \
+            --launcher-url "$LAUNCHER_URL" --launcher-sha256 "$LAUNCHER_SHA" \
+            --binary-url "$BINARY_URL" --binary-sha256 "$BINARY_SHA"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: acquisition
+          path: acquisition.json

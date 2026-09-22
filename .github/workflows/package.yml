@@ -1,0 +1,33 @@
+name: Prepare action distribution
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    env:
+      GOTOOLCHAIN: local
+      GOTELEMETRY: 'off'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.4'
+          cache: false
+      - run: go test ./...
+      - run: go vet ./...
+      - name: Build all six platforms
+        run: go run ./cmd/package --out dist --archives artifacts
+      - name: Verify reproducible builds and archives
+        shell: bash
+        run: |
+          go run ./cmd/package --out dist-repro --archives artifacts-repro
+          diff -r dist dist-repro
+          diff -r artifacts artifacts-repro
+      - uses: actions/upload-artifact@v4
+        with:
+          name: action-distribution
+          path: |
+            artifacts/*
+          retention-days: 14

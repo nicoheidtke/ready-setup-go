@@ -1,0 +1,17 @@
+name: Setup Go Better (Node launcher experiment)
+description: Run the same native installer through a dependency-free Node launcher.
+inputs:
+  go-version:
+    description: Exact Go version or minor selector.
+    required: true
+  check-latest:
+    description: Check official releases for the latest matching patch.
+    default: 'false'
+outputs:
+  go-version:
+    description: Selected exact Go version.
+  goroot:
+    description: Selected toolchain directory.
+runs:
+  using: node24
+  main: launch.cjs
