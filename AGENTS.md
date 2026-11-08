@@ -53,3 +53,7 @@ Continue with correctness checks before hosted integration or performance measur
 - Cache freshness/isolation ideas: https://github.com/cloudx-io/setup-go
 
 The upstream projects optimize different parts of CI. Their historical benchmark claims are not evidence for this project's performance on current runners.
+
+## Current preview/smoke authorization (2026-11-09)
+
+The user explicitly authorized publishing a fresh bundled preview and running one Linux pinned-package consumer smoke test against its immutable SHA. All workflows remain manual-only; the consumer workflow selects one runner per dispatch and defaults to ubuntu-24.04. This exception does not authorize a warm-cache repeat, the full platform matrix, benchmarks, Exasol runs, automatic triggers, or visibility changes. Follow the authorized run to completion and record its actual result; troubleshoot and fix correctness failures within that run scope.

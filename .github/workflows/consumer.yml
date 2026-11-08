@@ -2,6 +2,11 @@ name: Published action smoke test
 on:
   workflow_dispatch:
     inputs:
+      runner:
+        description: Native runner for this single smoke job
+        type: choice
+        options: [ubuntu-24.04, ubuntu-24.04-arm, macos-15-intel, macos-15, windows-2025, windows-11-arm]
+        default: ubuntu-24.04
       distribution-sha:
         description: Full commit SHA of the bundled preview to validate
         required: true
@@ -14,11 +19,8 @@ permissions:
   contents: read
 jobs:
   consume:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15-intel, macos-15, windows-2025, windows-11-arm]
-    runs-on: ${{ matrix.os }}
+    name: consume/${{ inputs.runner }}
+    runs-on: ${{ inputs.runner }}
     timeout-minutes: 15
     env:
       GOTOOLCHAIN: local
