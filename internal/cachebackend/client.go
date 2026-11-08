@@ -342,7 +342,10 @@ func (c *Client) rpc(ctx context.Context, method string, input, output any) erro
 		if detail.Code == "permission_denied" || detail.Code == "unauthenticated" {
 			return ErrPermission
 		}
-		return statusError("service request", resp.StatusCode)
+		if detail.Code == "invalid_argument" {
+			return fmt.Errorf("cache service %s returned HTTP %d (invalid_argument)", method, resp.StatusCode)
+		}
+		return statusError("service "+method, resp.StatusCode)
 	}
 	if err := json.Unmarshal(data, output); err != nil {
 		return errors.New("invalid cache service JSON response")

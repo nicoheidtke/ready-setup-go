@@ -3,6 +3,7 @@ package cache
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -597,5 +598,21 @@ func TestStartPostBridge(t *testing.T) {
 	}
 	if _, err := os.Stat(c.Report + ".post.json"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestServiceVersionUsesFullSHA256(t *testing.T) {
+	for _, storage := range []string{"archive", "chunked"} {
+		c := DefaultConfig()
+		c.Storage = storage
+		s := state(t, c, "dependencies", roots(t))
+		for _, snap := range s.Snapshots {
+			for _, version := range []string{snap.Version, chunkVersion(snap)} {
+				decoded, err := hex.DecodeString(version)
+				if err != nil || len(decoded) != 32 || len(version) != 64 {
+					t.Fatalf("%s/%s: cache service version must retain full SHA-256: %q", storage, snap.Kind, version)
+				}
+			}
+		}
 	}
 }

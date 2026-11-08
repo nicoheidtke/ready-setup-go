@@ -214,7 +214,9 @@ func Dependencies(ctx context.Context, workspace, paths string) (string, error) 
 	return hex.EncodeToString(h.Sum(nil))[:24], nil
 }
 
-func digest(s string) string { h := sha256.Sum256([]byte(s)); return hex.EncodeToString(h[:])[:24] }
+// Service versions retain the complete SHA-256 digest, matching the toolkit.
+func versionDigest(s string) string { h := sha256.Sum256([]byte(s)); return hex.EncodeToString(h[:]) }
+func digest(s string) string        { return versionDigest(s)[:24] }
 func namespace(scope string) string {
 	workflow, _, _ := strings.Cut(os.Getenv("GITHUB_WORKFLOW_REF"), "@")
 	if workflow == "" {

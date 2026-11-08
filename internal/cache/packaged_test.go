@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -105,6 +106,12 @@ func TestPackagedLifecycle(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			t.Error(err)
 			w.WriteHeader(400)
+			return
+		}
+		versionBytes, versionErr := hex.DecodeString(request.Version)
+		if versionErr != nil || len(versionBytes) != 32 {
+			t.Error("cache request version is not a full SHA-256 digest")
+			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")

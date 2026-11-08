@@ -133,7 +133,7 @@ func NewState(c Config, version, dependencies string, roots []cachearchive.Root)
 		}
 		compatible := base + kind + "-"
 		prefix := compatible + dependencies + "-"
-		s.Snapshots = append(s.Snapshots, Snapshot{Kind: kind, Roots: rs, CompatiblePrefix: compatible, Prefix: prefix, Key: prefix + id, Version: digest(Format + "\x00" + c.Compression + "\x00" + kind)})
+		s.Snapshots = append(s.Snapshots, Snapshot{Kind: kind, Roots: rs, CompatiblePrefix: compatible, Prefix: prefix, Key: prefix + id, Version: versionDigest(Format + "\x00" + c.Compression + "\x00" + kind)})
 	}
 	return s, nil
 }

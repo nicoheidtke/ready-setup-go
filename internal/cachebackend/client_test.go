@@ -229,6 +229,8 @@ func TestLookupResponses(t *testing.T) {
 		{"conflict", 409, `{"msg":"` + secret + `"}`, ErrConflict, false},
 		{"twirp-conflict", 400, `{"code":"already_exists","msg":"` + secret + `"}`, ErrConflict, false},
 		{"twirp-denied", 400, `{"code":"permission_denied","msg":"` + secret + `"}`, ErrPermission, false},
+		{"twirp-invalid", 400, `{"code":"invalid_argument","msg":"` + secret + `"}`, errors.New("GetCacheEntryDownloadURL returned HTTP 400 (invalid_argument)"), false},
+		{"untrusted-code", 400, `{"code":"` + secret + `","msg":"` + secret + `"}`, errors.New("HTTP 400"), false},
 		{"server", 503, secret, errors.New("HTTP 503"), false},
 		{"malformed", 200, secret, errors.New("JSON"), false},
 		{"no-key", 200, `{"ok":true,"signed_download_url":"https://blob.example/?sig=` + secret + `"}`, errors.New("matched key"), false},

@@ -34,7 +34,7 @@ type chunkManifest struct {
 }
 
 func chunkKey(s Snapshot, hash string) string { return s.CompatiblePrefix + "chunk-" + hash }
-func chunkVersion(s Snapshot) string          { return digest(chunkFormat + s.Version) }
+func chunkVersion(s Snapshot) string          { return versionDigest(chunkFormat + s.Version) }
 
 // A rolling hash forgets preceding bytes after at most 64 bytes. Boundaries
 // resynchronize after insertions, unlike fixed blocks or a monolithic gzip stream.
