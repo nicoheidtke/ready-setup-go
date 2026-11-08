@@ -2,7 +2,7 @@
 
 Priority order: **runtime performance, resource efficiency, maintainability**. Measure end-to-end effects rather than assuming a language, archive format, or storage service is faster.
 
-## Milestone 1 — Toolchain installation and measurement
+## Milestone 1 â€” Toolchain installation and measurement
 
 Implementation includes a standard-library Go installer; completed-toolchain discovery; exact/minor selection; checksum-verified downloads; staged extraction; composite and Node launchers; six-platform packaging; and automated validation/benchmark definitions.
 
@@ -20,9 +20,9 @@ Before a stable release (bundled preview commits may be used for consumer valida
 - Compare action acquisition plus execution, not only the installer timer. Record inconclusive results and regressions explicitly.
 - Publish a distribution commit containing binaries and preserve executable permissions. Source commits alone are not consumer-ready action distributions.
 
-## Milestone 2 — Fresh and efficient CI caches
+## Milestone 2 â€” Fresh and efficient CI caches
 
-Milestone 2 source implementation and local correctness gates are complete; hosted integration and performance measurements remain pending. The scoped implementation plan is [recorded here](docs/IMPLEMENTATION_PLAN.md). Source implementation, local correctness checks, hosted integration, and comparative measurements are separate gates.
+Milestone 2 source implementation and local correctness gates are complete. Initial Linux/amd64 split/gzip archive cold-save and warm-restore/post-save checks passed on 2026-11-09; the remaining hosted matrix and performance measurements are pending. The scoped implementation plan is [recorded here](docs/IMPLEMENTATION_PLAN.md). Source implementation, local correctness checks, hosted integration, and comparative measurements are separate gates.
 
 Restore/save policy, deterministic archives, and cache-v2 networking stay in Go with standard-library dependencies. GitHub cache is the first backend to measure, not a final performance choice. Cache mode defaults to off; split/combined archives, gzip/none compression, upload concurrency/block size, size bounds, optional build trimming, and failure behavior are explicit controls.
 
@@ -39,9 +39,9 @@ Lifecycle decision: the root action uses a dependency-free Node 24 launcher to r
 
 Implemented archive rules validate complete tar/gzip downloads in private staging before merging, reject links and nonportable paths, retain unrelated local entries, and give existing regular files priority. Snapshots use run/attempt/invocation freshness, dependency-matching then dependency-compatible lookup, and explicit matrix scope. Split modules skip unchanged uploads only after deterministic repacking/comparison. Build trimming is archive-only, recognized-object-only, and disabled by default. Service branch/default-branch access remains GitHub's responsibility. See [protocol boundaries](internal/cachebackend/PROTOCOL.md).
 
-Remaining validation gates after local implementation: hosted cache-v2 compatibility, actual post-hook behavior, native tests on all six platforms, branch/default-branch lookup, failed/cancelled jobs, concurrent snapshots, and the workload/transfer matrix above. Do not run them until the user authorizes hosted execution. No comparative cache or launcher results exist.
+The initial real cache-v2 service and automatic post-hook success path is verified on Linux/amd64 with split/gzip archive storage. Remaining gates include native cache tests on the other five platforms, hosted chunked caching, branch/default-branch lookup, failed/cancelled jobs, concurrent snapshots, and the workload/transfer matrix above. Further runs require explicit authorization. No comparative cache or launcher results exist.
 
-## Milestone 3 — Improve the measured bottleneck
+## Milestone 3 â€” Improve the measured bottleneck
 
 The user authorized the first self-contained implementation tranche on 2026-11-08 without waiting for hosted measurements: installation/cache prefetch overlap and opt-in chunked snapshots using the existing GitHub cache service. No extra consumer actions, services or infrastructure are introduced. The next user follow-up authorized bounded parallel chunk processing, also implemented locally. Remaining candidates are not promises or predetermined decisions:
 
