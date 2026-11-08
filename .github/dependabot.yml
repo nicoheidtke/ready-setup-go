@@ -1,0 +1,17 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      official-actions:
+        patterns:
+          - actions/*
+    ignore:
+      # Consumer tests must point at a bundled distribution, not source main.
+      - dependency-name: nicoheidtke/setup-go-better
+  - package-ecosystem: gomod
+    directory: /testdata/packages
+    schedule:
+      interval: weekly

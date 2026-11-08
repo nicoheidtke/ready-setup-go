@@ -190,6 +190,12 @@ func (c Config) get(ctx context.Context, u string) (*http.Response, error) {
 	return resp, nil
 }
 func (c Config) Setup(ctx context.Context, version string, latest bool) (r Result, err error) {
+	return c.SetupResolved(ctx, version, latest, nil)
+}
+
+// SetupResolved announces the exact selected version before downloading it.
+// The callback must return promptly; the toolchain is not executable yet.
+func (c Config) SetupResolved(ctx context.Context, version string, latest bool, resolved func(string)) (r Result, err error) {
 	start := time.Now()
 	defer func() { r.Metrics.TotalMS = elapsed(start) }()
 	if !supported(c.OS, c.Arch) {
@@ -214,6 +220,9 @@ func (c Config) Setup(ctx context.Context, version string, latest bool) (r Resul
 	if b, ok := best(cs); ok && (s.Exact || !latest) {
 		r.Version, r.Root, r.Source = b.Version.String(), b.root, b.source
 		r.Metrics.ResolutionMS = elapsed(resolution)
+		if resolved != nil {
+			resolved(r.Version)
+		}
 		return r, nil
 	}
 	v, a, err := c.resolve(ctx, s, &r.Metrics)
@@ -224,11 +233,17 @@ func (c Config) Setup(ctx context.Context, version string, latest bool) (r Resul
 	for _, b := range cs {
 		if b.Version == v {
 			r.Version, r.Root, r.Source = v.String(), b.root, b.source
+			if resolved != nil {
+				resolved(r.Version)
+			}
 			return r, nil
 		}
 	}
 	r.Version = v.String()
 	r.Source = "download"
+	if resolved != nil {
+		resolved(r.Version)
+	}
 	r.Root, err = c.install(ctx, v, a, &r.Metrics)
 	return r, err
 }

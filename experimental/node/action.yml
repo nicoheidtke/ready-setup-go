@@ -1,17 +1,82 @@
-name: Setup Go Better (Node launcher experiment)
-description: Run the same native installer through a dependency-free Node launcher.
+name: Setup Go Better
+description: Install Go 1.26+ with a native installer and no runtime downloads of the action itself.
 inputs:
   go-version:
-    description: Exact Go version or minor selector.
-    required: true
+    description: Exact Go version or minor selector, such as 1.26.1 or 1.26.x.
+    required: false
+  go-version-file:
+    description: Workspace-relative go.mod or go.work path. Explicit go-version takes precedence.
+    required: false
   check-latest:
-    description: Check official releases for the latest matching patch.
+    description: Resolve minor selectors against official releases instead of preferring installed patches.
     default: 'false'
+  cache:
+    description: Cache mode, off, restore, or restore-save. Cache failures warn unless cache-strict is true.
+    default: off
+  cache-scope:
+    description: Explicit matrix or workload variant namespace, in addition to repository/workflow/job identity.
+    default: ''
+  cache-layout:
+    description: Separate modules/build snapshots (split) or one combined snapshot (combined).
+    default: split
+  cache-chunk-concurrency:
+    description: Parallel chunk compression and transfer workers, 1 through 16; chunked storage only.
+    default: '4'
+  cache-storage:
+    description: Whole archive or content-defined chunked snapshots using GitHub cache storage.
+    default: archive
+  cache-overlap:
+    description: Prefetch caches while the selected toolchain installs; merge after installation.
+    default: 'true'
+  cache-compression:
+    description: Archive compression, gzip or none.
+    default: gzip
+  cache-dependency-path:
+    description: Newline-separated workspace-relative manifest files or recursively scanned directories. Default scans all modules, excluding cache/output/vendor directories.
+    default: ''
+  cache-build-max-age:
+    description: Optional archive-only build entry age filter, e.g. 120h. Zero disables trimming; module entries are never age-filtered.
+    default: '0'
+  cache-max-bytes:
+    description: Maximum expanded payload bytes per archive (1 through 10737418240).
+    default: '10737418240'
+  cache-strict:
+    description: Fail setup/post instead of warning on unavailable credentials, transport, or archive errors.
+    default: 'false'
+  cache-upload-concurrency:
+    description: Parallel upload worker count, 1 through 32.
+    default: '4'
+  cache-upload-chunk-bytes:
+    description: Upload block size in bytes, 1 through 4194304000.
+    default: '33554432'
+  cache-save-on-failure:
+    description: Also save snapshots after failed jobs. Cancelled jobs never save.
+    default: 'false'
+  cache-report:
+    description: Optional restore JSON file path. Post-job save report uses this path plus .post.json.
+    default: ''
 outputs:
   go-version:
     description: Selected exact Go version.
   goroot:
     description: Selected toolchain directory.
+  cache-hit:
+    description: True when every requested archive restored successfully; false on a miss or unavailable cache.
+  cache-key:
+    description: Comma-separated fresh immutable snapshot keys.
+  cache-matched-key:
+    description: Comma-separated keys returned by compatible-prefix lookup.
+  cache-restored-bytes:
+    description: Received archive payload bytes.
+  cache-restore-ms:
+    description: Cache restore operation elapsed milliseconds, excluding path discovery and dependency hashing.
 runs:
   using: node24
   main: launch.cjs
+  post: post.cjs
+  # Inputs are unavailable when the runner evaluates a post condition. The Go
+  # main writes this unique per-action flag through GITHUB_ENV instead.
+  post-if: "!cancelled() && (success() || env[format('SETUP_GO_BETTER_SAVE_ON_FAILURE_{0}', github.action)] == 'true')"
+branding:
+  icon: download
+  color: blue

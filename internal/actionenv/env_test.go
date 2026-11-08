@@ -38,3 +38,35 @@ func TestExport(t *testing.T) {
 		t.Fatal("accepted newline injection")
 	}
 }
+
+func TestLifecycleFieldsAndDistinctFailurePolicies(t *testing.T) {
+	for _, name := range []string{"GITHUB_STATE", "GITHUB_ENV", "GITHUB_OUTPUT"} {
+		p := filepath.Join(t.TempDir(), name)
+		if err := os.WriteFile(p, nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv(name, p)
+	}
+	if err := Environment("SETUP_GO_BETTER_SAVE_ON_FAILURE_action1", "true"); err != nil {
+		t.Fatal(err)
+	}
+	if err := Environment("SETUP_GO_BETTER_SAVE_ON_FAILURE_action2", "false"); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(os.Getenv("GITHUB_ENV"))
+	if !strings.Contains(string(b), "action1=true\n") || !strings.Contains(string(b), "action2=false\n") {
+		t.Fatal(string(b))
+	}
+	if err := State("cache_state", filepath.Join(t.TempDir(), "state with spaces.json")); err != nil {
+		t.Fatal(err)
+	}
+	if err := Output("cache-hit", "false"); err != nil {
+		t.Fatal(err)
+	}
+	if err := State("bad\nfield", "injected"); err == nil {
+		t.Fatal("state name injection accepted")
+	}
+	if err := Output("cache-hit", "false\nother=true"); err == nil {
+		t.Fatal("output value injection accepted")
+	}
+}

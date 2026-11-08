@@ -1,0 +1,74 @@
+name: Published action smoke test
+on:
+  workflow_dispatch:
+    inputs:
+      distribution-sha:
+        description: Full commit SHA of the bundled preview to validate
+        required: true
+        type: string
+      expect-hit:
+        description: Require a cache hit on a repeat dispatch with the same preview
+        default: false
+        type: boolean
+permissions:
+  contents: read
+jobs:
+  consume:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15-intel, macos-15, windows-2025, windows-11-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Require an immutable distribution revision
+        shell: bash
+        env:
+          DISTRIBUTION_SHA: ${{ inputs.distribution-sha }}
+        run: '[[ "$DISTRIBUTION_SHA" =~ ^[0-9a-fA-F]{40}$ ]]'
+      - name: Check out bundled preview without building it
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.distribution-sha }}
+          path: .preview-action
+          persist-credentials: false
+      - name: Verify distribution provenance
+        shell: bash
+        run: |
+          cd .preview-action
+          test -s SOURCE_REVISION
+          [[ "$(cat SOURCE_REVISION)" =~ ^[0-9a-fA-F]{40}$ ]]
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum --check SHA256SUMS
+          else
+            shasum -a 256 -c SHA256SUMS
+          fi
+          cat SOURCE_REVISION
+      - name: Use published preview
+        id: go
+        uses: ./.preview-action
+        with:
+          go-version-file: testdata/packages/go.mod
+          cache: restore-save
+          cache-strict: 'true'
+          cache-scope: consumer-${{ inputs.distribution-sha }}
+          cache-dependency-path: testdata/packages
+      - name: Verify repeat restore
+        if: inputs.expect-hit
+        shell: bash
+        env:
+          CACHE_HIT: ${{ steps.go.outputs.cache-hit }}
+        run: test "$CACHE_HIT" = true
+      - name: Verify selected toolchain and compile dependencies
+        shell: bash
+        env:
+          SELECTED_VERSION: ${{ steps.go.outputs.go-version }}
+          SELECTED_ROOT: ${{ steps.go.outputs.goroot }}
+        run: |
+          test "$SELECTED_VERSION" = '1.26.0'
+          test "$(go env GOVERSION)" = 'go1.26.0'
+          test "$(go env GOROOT)" = "$SELECTED_ROOT"
+          go -C testdata/packages test -mod=readonly -count=1 ./...

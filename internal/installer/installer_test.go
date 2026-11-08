@@ -213,6 +213,42 @@ func TestDownloadAndReuse(t *testing.T) {
 		})
 	}
 }
+
+func TestResolvedVersionAnnouncedBeforeInstallation(t *testing.T) {
+	c := testConfig(t)
+	body := archiveFixture(t, c.OS, "1.26.2")
+	requests := serve(t, &c, body, "1.26.2", false, false, false)
+	called := 0
+	r, err := c.SetupResolved(context.Background(), "1.26", true, func(version string) {
+		called++
+		if version != "1.26.2" || requests.Load() != 1 {
+			t.Fatalf("callback after download or wrong version: %q %d", version, requests.Load())
+		}
+		if complete(filepath.Join(c.InstallDir, version, c.OS+"-"+c.Arch), Version{26, 2}, c.OS) {
+			t.Fatal("callback waited for installation")
+		}
+	})
+	if err != nil || called != 1 || r.Version != "1.26.2" {
+		t.Fatal(r, called, err)
+	}
+	called = 0
+	_, err = c.SetupResolved(context.Background(), "1.26.2", false, func(version string) {
+		called++
+		if version != "1.26.2" {
+			t.Fatal(version)
+		}
+	})
+	if err != nil || called != 1 || requests.Load() != 2 {
+		t.Fatal(called, requests.Load(), err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c.InstallDir = t.TempDir()
+	_, err = c.SetupResolved(ctx, "1.26.2", false, func(string) { cancel() })
+	if err == nil {
+		t.Fatal("cancelled installation succeeded")
+	}
+}
 func TestLatestChecksMetadata(t *testing.T) {
 	c := testConfig(t)
 	seed(t, c, "1.26.1", false, true)

@@ -24,6 +24,21 @@ func appendFile(env, text string) error {
 	return closeErr
 }
 
+// Output writes a single-line value using GitHub's file protocol.
+func Output(name, value string) error { return field("GITHUB_OUTPUT", name, value) }
+
+// State is private to this action instance and is made available to its post hook.
+func State(name, value string) error { return field("GITHUB_STATE", name, value) }
+
+func Environment(name, value string) error { return field("GITHUB_ENV", name, value) }
+
+func field(env, name, value string) error {
+	if name == "" || strings.ContainsAny(name, "=\r\n\x00") || strings.ContainsAny(value, "\r\n\x00") {
+		return fmt.Errorf("unsafe action field")
+	}
+	return appendFile(env, name+"="+value+"\n")
+}
+
 func Export(version, root string) error {
 	if strings.ContainsAny(version+root, "\r\n\x00") {
 		return fmt.Errorf("unsafe newline in action output")

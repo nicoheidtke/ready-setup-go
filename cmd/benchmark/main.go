@@ -48,11 +48,19 @@ func main() {
 }
 func cleanEnv(extra map[string]string) []string {
 	// Preserve runner context but prevent subprocesses from altering this job.
-	for _, k := range []string{"GITHUB_ENV", "GITHUB_PATH", "GITHUB_OUTPUT", "GOROOT", "INPUT_GO-VERSION", "INPUT_CHECK-LATEST"} {
+	for _, k := range []string{"GITHUB_ENV", "GITHUB_PATH", "GITHUB_OUTPUT", "GITHUB_STATE", "STATE_cache_state", "GOROOT", "INPUT_GO-VERSION", "INPUT_CHECK-LATEST"} {
 		if _, ok := extra[k]; !ok {
 			extra[k] = ""
 		}
 	}
+	// Installation samples must remain independent from optional restore/post work.
+	for _, item := range os.Environ() {
+		key, _, _ := strings.Cut(item, "=")
+		if strings.HasPrefix(strings.ToUpper(key), "INPUT_CACHE") {
+			extra[key] = ""
+		}
+	}
+	extra["INPUT_CACHE"] = "off"
 	var env []string
 	for _, s := range os.Environ() {
 		k, _, _ := strings.Cut(s, "=")
@@ -119,7 +127,7 @@ func run() error {
 	if *scenario != "cold" {
 		// Populate once outside measured samples. All subsequent warm exact/minor
 		// executions have an invalid HTTP proxy, so accidental network use fails.
-		cmd := exec.Command(binary, "setup", "--go-version", *version)
+		cmd := exec.Command(binary, "setup", "--go-version", *version, "--cache=off")
 		cmd.Env = cleanEnv(map[string]string{"RUNNER_TEMP": warm, "RUNNER_TOOL_CACHE": ""})
 		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 		if e = cmd.Run(); e != nil {
@@ -148,9 +156,9 @@ func run() error {
 			jsonFile := filepath.Join(tmp, "sample.json")
 			var cmd *exec.Cmd
 			if launcher == "composite" {
-				cmd = exec.Command(*shell, "--noprofile", "--norc", filepath.Join(root, "launch.sh"), "--json", jsonFile)
+				cmd = exec.Command(*shell, "--noprofile", "--norc", filepath.Join(root, "launch.sh"), "--cache=off", "--json", jsonFile)
 			} else {
-				cmd = exec.Command(*node, filepath.Join(root, "experimental", "node", "launch.cjs"), "--json", jsonFile)
+				cmd = exec.Command(*node, filepath.Join(root, "experimental", "node", "launch.cjs"), "--cache=off", "--json", jsonFile)
 			}
 			extra := map[string]string{"RUNNER_OS": runnerOS, "RUNNER_ARCH": arch, "RUNNER_TEMP": runTemp, "RUNNER_TOOL_CACHE": "", "SETUP_GO_BETTER_ROOT": root, "SETUP_GO_BETTER_VERSION": requested, "SETUP_GO_BETTER_LATEST": latest}
 			if *scenario == "installed-exact" || *scenario == "installed-minor" {

@@ -1,0 +1,125 @@
+name: Manual cache lifecycle validation
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: Repeat for all six native platforms
+        type: choice
+        options: [ubuntu-24.04, ubuntu-24.04-arm, macos-15-intel, macos-15, windows-2025, windows-11-arm]
+        default: ubuntu-24.04
+      go-version:
+        description: Exact toolchain version
+        default: '1.26.8'
+      scope:
+        description: Unique validation namespace; reuse on second dispatch to verify the first post-save
+        required: true
+        default: manual-cache-validation
+      expect-hit:
+        description: Enable on second dispatch after reviewing successful post-save in first run
+        type: boolean
+        default: false
+      layout:
+        type: choice
+        description: Archive layout to validate
+        options: [split, combined]
+        default: split
+      compression:
+        type: choice
+        description: Archive compression to validate
+        options: [gzip, none]
+        default: gzip
+      chunk-concurrency:
+        description: Parallel chunk workers, 1 through 16
+        default: '4'
+      storage:
+        type: choice
+        description: Whole archive or content-defined chunked snapshots
+        options: [archive, chunked]
+        default: archive
+      overlap:
+        type: boolean
+        description: Prefetch cache while the selected toolchain installs
+        default: true
+permissions:
+  contents: read
+jobs:
+  cache-validation:
+    name: cache-validation/${{ inputs.runner }}/${{ inputs.layout }}/${{ inputs.compression }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 30
+    env:
+      GOTOOLCHAIN: local
+      GOTELEMETRY: 'off'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - name: Package native action without warming measured cache paths
+        shell: bash
+        env:
+          GOCACHE: ${{ runner.temp }}/bootstrap-build-cache
+          GOMODCACHE: ${{ runner.temp }}/bootstrap-module-cache
+        run: |
+          case "$RUNNER_OS" in Linux) platform=linux ;; macOS) platform=darwin ;; Windows) platform=windows ;; esac
+          case "$RUNNER_ARCH" in X64) arch=amd64 ;; ARM64) arch=arm64 ;; esac
+          go run ./cmd/package --platform "$platform/$arch"
+          mkdir -p cache-reports
+          echo "GOCACHE=$RUNNER_TEMP/validation-build-cache" >> "$GITHUB_ENV"
+          echo "GOMODCACHE=$RUNNER_TEMP/validation-module-cache" >> "$GITHUB_ENV"
+      - name: measure/restore-through-node-action
+        id: cache
+        uses: ./dist
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache: restore-save
+          cache-scope: ${{ inputs.scope }}
+          cache-layout: ${{ inputs.layout }}
+          cache-chunk-concurrency: ${{ inputs.chunk-concurrency }}
+          cache-storage: ${{ inputs.storage }}
+          cache-overlap: ${{ inputs.overlap }}
+          cache-compression: ${{ inputs.compression }}
+          cache-strict: 'true'
+          cache-dependency-path: testdata/packages
+          cache-report: cache-reports/restore.json
+      - name: Verify expected warm restore
+        if: inputs.expect-hit
+        shell: bash
+        env:
+          CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
+          CACHE_BYTES: ${{ steps.cache.outputs.cache-restored-bytes }}
+        run: |
+          test "$CACHE_HIT" = true
+          test "$CACHE_BYTES" -gt 0
+      - name: measure/pinned-package-workload
+        working-directory: testdata/packages
+        run: go test -mod=readonly -count=1 ./...
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: cache-restore-report
+          # The .post.json report does not exist until normal steps finish.
+          path: cache-reports/restore.json
+  report:
+    if: always()
+    needs: cache-validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - name: Collect completed job and real post-step timings
+        run: go run ./cmd/workflow-report --out cache-lifecycle-timings.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cache-lifecycle-timings
+          path: cache-lifecycle-timings.json
