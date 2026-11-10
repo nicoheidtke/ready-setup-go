@@ -65,7 +65,7 @@ func run() error {
 		sum := sha256.Sum256(b)
 		fmt.Fprintf(&sums, "%s  %s\n", hex.EncodeToString(sum[:]), filepath.ToSlash(rel))
 	}
-	for _, rel := range []string{"action.yml", "launch.sh", "launch.cjs", "post.cjs", "launcher.cjs", "experimental/composite/action.yml", "experimental/node/action.yml", "experimental/node/launch.cjs", "experimental/node/post.cjs", "README.md", "ROADMAP.md", "docs/BENCHMARKS.md", "docs/DEVELOPMENT.md", "docs/IMPLEMENTATION_PLAN.md", "docs/validation-2026-09-22.md", "internal/cachebackend/PROTOCOL.md"} {
+	for _, rel := range []string{"action.yml", "launch.sh", "launch.cjs", "post.cjs", "launcher.cjs", "experimental/composite/action.yml", "experimental/node/action.yml", "experimental/node/launch.cjs", "experimental/node/post.cjs", "README.md", "ROADMAP.md", "docs/BENCHMARKS.md", "docs/DEVELOPMENT.md", "docs/IMPLEMENTATION_PLAN.md", "docs/validation-2026-09-22.md", "docs/investigation-2026-11-10.md", "internal/cachebackend/PROTOCOL.md"} {
 		b, err := os.ReadFile(rel)
 		if err != nil {
 			return err

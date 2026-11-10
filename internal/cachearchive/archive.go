@@ -5,6 +5,7 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -21,6 +22,9 @@ import (
 type Root struct{ Name, Path string }
 type Options struct {
 	Compression string
+	// ContentIdentity computes a content/mode digest while validating modules.
+	// Build restores do not need this additional hashing work.
+	ContentIdentity bool
 	// TrimBefore filters old canonical Go build objects only in the "build" root.
 	// It never changes local files or trims modules. Zero disables trimming.
 	TrimBefore time.Time
@@ -29,7 +33,12 @@ type Options struct {
 }
 
 // Stats counts regular-file payload in the archive, including existing files skipped during merge.
-type Stats struct{ Files, Bytes int64 }
+type Stats struct {
+	Files, Bytes                                          int64
+	ContentDigest                                         string
+	StageMS, PreflightMS, MergeMS, CleanupMS              float64
+	PublishedFiles, LinkedFiles, CopiedFiles, CopiedBytes int64
+}
 
 func options(o Options) (Options, error) {
 	if o.Compression == "" {
@@ -204,11 +213,24 @@ func Restore(ctx context.Context, r io.Reader, roots []Root, opts Options) (stat
 	limited := &boundedReader{r: &contextReader{ctx: ctx, r: r}, left: opts.MaxBytes}
 	r = limited
 	tr := tar.NewReader(r)
-	stage, err := os.MkdirTemp("", "setup-go-better-cache-*")
-	if err != nil {
-		return stats, err
+	started := time.Now()
+	stageFinished := false
+	stages := make(map[string]string)
+	defer func() {
+		cleanup := time.Now()
+		for _, stage := range stages {
+			err = errors.Join(err, os.RemoveAll(stage))
+		}
+		stats.CleanupMS = elapsedMS(cleanup)
+		if !stageFinished {
+			stats.StageMS = elapsedMS(started) - stats.CleanupMS
+		}
+	}()
+	var identity *contentIdentity
+	if opts.ContentIdentity {
+		identity = newContentIdentity()
 	}
-	defer os.RemoveAll(stage)
+	copyBuffer := make([]byte, 32*1024)
 	var entries []entry
 	seen, spellings, parents := make(map[string]byte), make(map[string]string), make(map[string]bool)
 	for {
@@ -267,7 +289,19 @@ func Restore(ctx context.Context, r io.Reader, roots []Root, opts Options) (stat
 			}
 		}
 		seen[key] = h.Typeflag
-		target := filepath.Join(stage, filepath.FromSlash(name))
+		stage := stages[parts[0]]
+		if stage == "" {
+			stage, err = stagingDirectory(byName[parts[0]].Path)
+			if err != nil {
+				return stats, err
+			}
+			stages[parts[0]] = stage
+		}
+		target := filepath.Join(stage, "payload")
+		if len(parts) > 1 {
+			target = filepath.Join(target, filepath.FromSlash(strings.Join(parts[1:], "/")))
+		}
+		var contentDigest []byte
 		if h.Typeflag == tar.TypeDir {
 			err = os.MkdirAll(target, 0700)
 		} else {
@@ -277,7 +311,13 @@ func Restore(ctx context.Context, r io.Reader, roots []Root, opts Options) (stat
 				f, err = os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 				if err == nil {
 					var n int64
-					n, err = io.Copy(f, tr)
+					if identity != nil {
+						hash := sha256.New()
+						n, err = io.CopyBuffer(io.MultiWriter(f, hash), tr, copyBuffer)
+						contentDigest = hash.Sum(nil)
+					} else {
+						n, err = io.CopyBuffer(f, tr, copyBuffer)
+					}
 					err = errors.Join(err, f.Close())
 					stats.Files++
 					stats.Bytes += n
@@ -286,6 +326,9 @@ func Restore(ctx context.Context, r io.Reader, roots []Root, opts Options) (stat
 		}
 		if err != nil {
 			return stats, err
+		}
+		if identity != nil {
+			identity.add(name, h.Mode, h.Typeflag == tar.TypeDir, contentDigest)
 		}
 		entries = append(entries, entry{name, *h})
 	}
@@ -308,25 +351,113 @@ func Restore(ctx context.Context, r io.Reader, roots []Root, opts Options) (stat
 	if err := ctx.Err(); err != nil {
 		return stats, err
 	}
+	if identity != nil {
+		stats.ContentDigest = identity.sum()
+	}
+	stats.StageMS = elapsedMS(started)
+	stageFinished = true
+	preflight := time.Now()
+	checked := make(map[string]fs.FileInfo)
 	// Preflight every explicit destination and implicit ancestor before publication.
 	for _, e := range entries {
+		if err := ctx.Err(); err != nil {
+			return stats, err
+		}
 		parts := strings.SplitN(e.name, "/", 2)
 		target := byName[parts[0]].Path
 		if len(parts) == 2 {
 			target = filepath.Join(target, filepath.FromSlash(parts[1]))
 		}
-		if err := noSymlinkPath(target); err != nil && !errors.Is(err, os.ErrNotExist) {
+		info, err := preflightPath(target, checked)
+		if err != nil {
 			return stats, err
 		}
-		info, err := os.Lstat(target)
-		if err == nil && (info.IsDir() != (e.hdr.Typeflag == tar.TypeDir) || (!info.IsDir() && !info.Mode().IsRegular())) {
+		if info != nil && (info.IsDir() != (e.hdr.Typeflag == tar.TypeDir) || (!info.IsDir() && !info.Mode().IsRegular())) {
 			return stats, fmt.Errorf("incompatible destination %q", target)
 		}
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return stats, err
+	}
+	stats.PreflightMS = elapsedMS(preflight)
+	publication := time.Now()
+	err = merge(ctx, stages, entries, byName, &stats)
+	stats.MergeMS = elapsedMS(publication)
+	return stats, err
+}
+
+func elapsedMS(start time.Time) float64 {
+	return float64(time.Since(start)) / float64(time.Millisecond)
+}
+
+// Keep staging outside destination roots until complete validation, but on the
+// destination filesystem where possible so publication need not copy payloads.
+func stagingDirectory(destination string) (string, error) {
+	abs, err := filepath.Abs(destination)
+	if err != nil {
+		return "", err
+	}
+	parent := filepath.Dir(abs)
+	for {
+		info, err := os.Lstat(parent)
+		if err == nil {
+			if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+				return "", fmt.Errorf("unsafe staging ancestor %q", parent)
+			}
+			if err := noSymlinkPath(parent); err != nil {
+				return "", err
+			}
+			if stage, err := os.MkdirTemp(parent, ".setup-go-better-cache-*"); err == nil {
+				return stage, nil
+			}
+			break
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+		next := filepath.Dir(parent)
+		if next == parent {
+			break
+		}
+		parent = next
+	}
+	return os.MkdirTemp("", "setup-go-better-cache-*")
+}
+
+// Each existing component is inspected once. A missing ancestor makes every
+// descendant absent; symlink/file ancestors still fail before any publication.
+func preflightPath(name string, checked map[string]fs.FileInfo) (fs.FileInfo, error) {
+	abs, err := filepath.Abs(name)
+	if err != nil {
+		return nil, err
+	}
+	if info, ok := checked[abs]; ok {
+		return info, nil
+	}
+	parent := filepath.Dir(abs)
+	if parent != abs {
+		info, err := preflightPath(parent, checked)
+		if err != nil {
+			return nil, err
+		}
+		if info == nil {
+			checked[abs] = nil
+			return nil, nil
+		}
+		if !info.IsDir() {
+			return nil, fmt.Errorf("unsafe cache destination component %q", parent)
 		}
 	}
-	return stats, merge(ctx, stage, entries, byName)
+	info, err := os.Lstat(abs)
+	if errors.Is(err, os.ErrNotExist) {
+		checked[abs] = nil
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("unsafe cache destination component %q", abs)
+	}
+	checked[abs] = info
+	return info, nil
 }
 
 type directory struct {
@@ -336,12 +467,18 @@ type directory struct {
 	mtime time.Time
 }
 
-func merge(ctx context.Context, stage string, entries []entry, roots map[string]Root) (err error) {
+func merge(ctx context.Context, stages map[string]string, entries []entry, roots map[string]Root, stats *Stats) (err error) {
 	opened := make(map[string]*os.Root)
+	private := make(map[string]string)
+	ready := make(map[*os.Root]map[string]bool)
 	var modes []directory
+	copyBuffer := make([]byte, 32*1024)
 	// Temporarily writable existing module directories always regain their modes,
 	// including after cancellation or failure.
 	defer func() {
+		for rootName, name := range private {
+			err = errors.Join(err, opened[rootName].RemoveAll(name))
+		}
 		for i := len(modes) - 1; i >= 0; i-- {
 			d := modes[i]
 			if !d.mtime.IsZero() {
@@ -368,6 +505,19 @@ func merge(ctx context.Context, stage string, entries []entry, roots map[string]
 				return err
 			}
 			opened[parts[0]] = r
+			ready[r] = make(map[string]bool)
+			if err := writableDirs(r, ".", &modes, ready[r]); err != nil {
+				return err
+			}
+			// Rename cannot replace local files: only a new random private
+			// directory receives staging. Final publication uses Link, never Rename.
+			if dir, e := os.MkdirTemp(roots[parts[0]].Path, ".setup-go-better-publish-*"); e == nil {
+				if e := os.Rename(filepath.Join(stages[parts[0]], "payload"), filepath.Join(dir, "payload")); e == nil {
+					private[parts[0]] = filepath.Base(dir)
+				} else {
+					os.Remove(dir)
+				}
+			}
 		}
 		name := "."
 		if len(parts) == 2 {
@@ -375,7 +525,7 @@ func merge(ctx context.Context, stage string, entries []entry, roots map[string]
 		}
 		if e.hdr.Typeflag == tar.TypeDir {
 			if _, err := r.Lstat(name); errors.Is(err, os.ErrNotExist) {
-				if err := writableDirs(r, name, &modes); err != nil {
+				if err := writableDirs(r, name, &modes, ready[r]); err != nil {
 					return err
 				}
 				modes = append(modes, directory{r, name, fs.FileMode(e.hdr.Mode), e.hdr.ModTime})
@@ -392,37 +542,94 @@ func merge(ctx context.Context, stage string, entries []entry, roots map[string]
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
-		if err := writableDirs(r, filepath.Dir(name), &modes); err != nil {
+		if err := writableDirs(r, filepath.Dir(name), &modes, ready[r]); err != nil {
 			return err
 		}
-		out, err := r.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-		if errors.Is(err, os.ErrExist) {
-			continue
+		if stage := private[parts[0]]; stage != "" {
+			source := filepath.Join(stage, "payload", name)
+			if linkErr := r.Link(source, name); linkErr == nil {
+				// Unlink writable staging before setting Windows read-only attributes.
+				if err := r.Remove(source); err != nil {
+					r.Remove(name)
+					return err
+				}
+				if err := r.Chmod(name, fs.FileMode(e.hdr.Mode)); err != nil {
+					r.Remove(name)
+					return err
+				}
+				if err := r.Chtimes(name, e.hdr.ModTime, e.hdr.ModTime); err != nil {
+					r.Chmod(name, 0600)
+					r.Remove(name)
+					return err
+				}
+				stats.PublishedFiles++
+				stats.LinkedFiles++
+				continue
+			} else if errors.Is(linkErr, os.ErrExist) {
+				info, err := r.Lstat(name)
+				if err != nil {
+					return err
+				}
+				if !info.Mode().IsRegular() {
+					return fmt.Errorf("unsafe destination %q", name)
+				}
+				continue
+			}
 		}
-		if err != nil {
-			return err
+		openSource := func() (*os.File, error) {
+			if stage := private[parts[0]]; stage != "" {
+				return r.Open(filepath.Join(stage, "payload", name))
+			}
+			return os.Open(filepath.Join(stages[parts[0]], "payload", name))
 		}
-		in, err := os.Open(filepath.Join(stage, filepath.FromSlash(e.name)))
-		if err == nil {
-			_, err = io.Copy(out, &contextReader{ctx: ctx, r: in})
-			err = errors.Join(err, in.Close())
-		}
-		if err == nil {
-			err = out.Chmod(fs.FileMode(e.hdr.Mode))
-		}
-		err = errors.Join(err, out.Close())
-		if err == nil {
-			err = r.Chtimes(name, e.hdr.ModTime, e.hdr.ModTime)
-		}
-		if err != nil {
-			r.Chmod(name, 0600)
-			r.Remove(name)
+		if err := publishCopy(ctx, r, name, e.hdr, openSource, copyBuffer, stats); err != nil {
 			return err
 		}
 	}
 	return nil
 }
-func writableDirs(r *os.Root, name string, modes *[]directory) error {
+
+// The fallback preserves atomic no-replace creation on filesystems where staged
+// moves or hard links are unavailable. Publication errors remove only our file.
+func publishCopy(ctx context.Context, r *os.Root, name string, hdr tar.Header, openSource func() (*os.File, error), copyBuffer []byte, stats *Stats) error {
+	out, err := r.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if errors.Is(err, os.ErrExist) {
+		info, statErr := r.Lstat(name)
+		if statErr != nil {
+			return statErr
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("unsafe destination %q", name)
+		}
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	in, err := openSource()
+	if err == nil {
+		var n int64
+		n, err = io.CopyBuffer(out, &contextReader{ctx: ctx, r: in}, copyBuffer)
+		stats.CopiedBytes += n
+		err = errors.Join(err, in.Close())
+	}
+	if err == nil {
+		err = out.Chmod(fs.FileMode(hdr.Mode))
+	}
+	err = errors.Join(err, out.Close())
+	if err == nil {
+		err = r.Chtimes(name, hdr.ModTime, hdr.ModTime)
+	}
+	if err != nil {
+		r.Chmod(name, 0600)
+		r.Remove(name)
+		return err
+	}
+	stats.PublishedFiles++
+	stats.CopiedFiles++
+	return nil
+}
+func writableDirs(r *os.Root, name string, modes *[]directory, ready map[string]bool) error {
 	names := []string{"."}
 	if name != "." {
 		current := ""
@@ -432,11 +639,15 @@ func writableDirs(r *os.Root, name string, modes *[]directory) error {
 		}
 	}
 	for _, name := range names {
+		if ready[name] {
+			continue
+		}
 		info, err := r.Lstat(name)
 		if errors.Is(err, os.ErrNotExist) {
 			if err := r.Mkdir(name, 0755); err != nil {
 				return err
 			}
+			ready[name] = true
 			continue
 		}
 		if err != nil {
@@ -451,6 +662,7 @@ func writableDirs(r *os.Root, name string, modes *[]directory) error {
 			}
 			*modes = append(*modes, directory{root: r, name: name, mode: info.Mode().Perm()})
 		}
+		ready[name] = true
 	}
 	return nil
 }

@@ -2,7 +2,7 @@
 const { spawnSync } = require('node:child_process');
 
 function invocation(env = process.env) {
-  const flags = ['go', 'seed-go', 'source', 'workload', 'scenario', 'samples', 'mode', 'layout', 'storage', 'chunk-concurrency', 'compression', 'dependency', 'max-bytes', 'upload-concurrency', 'upload-chunk-bytes', 'build-max-age', 'out'];
+  const flags = ['go', 'seed-go', 'source', 'workload', 'scenario', 'samples', 'mode', 'layout', 'storage', 'chunk-concurrency', 'compression', 'dependency', 'max-bytes', 'upload-concurrency', 'upload-chunk-bytes', 'download-concurrency', 'download-chunk-bytes', 'build-max-age', 'out'];
   const args = [];
   for (const flag of flags) {
     const value = env[`INPUT_${flag.toUpperCase()}`];

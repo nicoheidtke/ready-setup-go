@@ -12,9 +12,11 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -41,6 +43,10 @@ type Client struct {
 	MaxBytes    int64
 	BlockSize   int64
 	Concurrency int
+	// Download settings are independent of upload blocks/workers. One worker
+	// retains the sequential GET path; zero uses four 32 MiB range workers.
+	DownloadConcurrency int
+	DownloadBlockSize   int64
 }
 
 // Entry's URL is a credential. Callers must not log or persist it.
@@ -90,16 +96,49 @@ func (c *Client) Download(ctx context.Context, entry Entry, dst io.Writer) (int6
 	}
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	block, workers, err := c.downloadSettings()
 	if err != nil {
-		return 0, errors.New("create cache download request")
+		return 0, err
 	}
-	req.Header.Set("Accept-Encoding", "identity")
-	resp, err := c.httpClient().Do(req)
+	if f, ok := dst.(*os.File); ok && workers > 1 {
+		offset, err := f.Seek(0, io.SeekCurrent)
+		if err != nil {
+			return 0, errors.New("seek cache download destination")
+		}
+		return c.downloadRanges(ctx, u, f, offset, limit, block, workers)
+	}
+	return c.downloadStream(ctx, u, dst, limit)
+}
+
+func (c *Client) downloadStream(ctx context.Context, u *url.URL, dst io.Writer, limit int64) (int64, error) {
+	resp, err := c.getDownload(ctx, u, "", "")
 	if err != nil {
-		return 0, transferError(ctx, "download")
+		return 0, err
 	}
 	defer resp.Body.Close()
+	return consumeDownload(ctx, resp, dst, limit)
+}
+
+func (c *Client) getDownload(ctx context.Context, u *url.URL, byteRange, etag string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, errors.New("create cache download request")
+	}
+	req.Header.Set("Accept-Encoding", "identity")
+	if byteRange != "" {
+		req.Header.Set("Range", byteRange)
+	}
+	if etag != "" {
+		req.Header.Set("If-Match", etag)
+	}
+	resp, err := c.httpClient().Do(req)
+	if err != nil {
+		return nil, transferError(ctx, "download")
+	}
+	return resp, nil
+}
+
+func consumeDownload(ctx context.Context, resp *http.Response, dst io.Writer, limit int64) (int64, error) {
 	if resp.StatusCode != http.StatusOK {
 		return 0, statusError("download", resp.StatusCode)
 	}
@@ -120,6 +159,185 @@ func (c *Client) Download(ctx context.Context, entry Entry, dst io.Writer) (int6
 	}
 	if err != io.EOF {
 		return n, transferError(ctx, "download body")
+	}
+	return n, nil
+}
+
+func (c *Client) downloadSettings() (int64, int, error) {
+	block, workers := c.DownloadBlockSize, c.DownloadConcurrency
+	if block == 0 {
+		block = defaultBlockSize
+	}
+	if workers == 0 {
+		workers = 4
+	}
+	if block < 1 || block > 4000<<20 || workers < 1 || workers > 32 {
+		return 0, 0, errors.New("invalid cache download settings")
+	}
+	return block, workers, nil
+}
+
+// downloadRanges consumes the first block before starting bounded workers. A
+// server ignoring Range returns its full 200 response through the stream path,
+// without a second download. Cache blobs are immutable; a strong ETag, when
+// available, additionally pins every subsequent request to the same object.
+func (c *Client) downloadRanges(ctx context.Context, u *url.URL, dst *os.File, base, limit, block int64, workers int) (int64, error) {
+	resp, err := c.getDownload(ctx, u, fmt.Sprintf("bytes=0-%d", block-1), "")
+	if err != nil {
+		return 0, err
+	}
+	if resp.StatusCode == http.StatusOK {
+		defer resp.Body.Close()
+		return consumeDownload(ctx, resp, dst, limit)
+	}
+	if resp.StatusCode == http.StatusRequestedRangeNotSatisfiable {
+		// Empty objects may reject even the initial range. Let a full GET
+		// handle that case with the same limits as a sequential download.
+		resp.Body.Close()
+		return c.downloadStream(ctx, u, dst, limit)
+	}
+	if resp.StatusCode != http.StatusPartialContent {
+		resp.Body.Close()
+		return 0, statusError("download range", resp.StatusCode)
+	}
+	start, end, size, err := parseContentRange(resp.Header.Get("Content-Range"))
+	if err != nil || start != 0 || end != min(block, size)-1 {
+		resp.Body.Close()
+		return 0, errors.New("invalid cache download content range")
+	}
+	if size > limit || base > int64(^uint64(0)>>1)-size {
+		resp.Body.Close()
+		return 0, errors.New("cache download exceeds archive size limit")
+	}
+	if 1+(size-1)/block > 50000 {
+		resp.Body.Close()
+		return c.downloadStream(ctx, u, dst, limit)
+	}
+	etag := resp.Header.Get("ETag")
+	if strings.HasPrefix(etag, "W/") {
+		etag = ""
+	}
+	n, err := consumeRange(ctx, resp, io.NewOffsetWriter(dst, base), 0, end, size, etag)
+	resp.Body.Close()
+	if err != nil {
+		return n, err
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var transferred atomic.Int64
+	transferred.Store(n)
+	jobs := make(chan int64)
+	var wg sync.WaitGroup
+	var once sync.Once
+	var firstErr error
+	remaining := size - end - 1
+	remainingBlocks := remaining / block
+	if remaining%block != 0 {
+		remainingBlocks++
+	}
+	for range min(workers, int(remainingBlocks)) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for offset := range jobs {
+				if ctx.Err() != nil {
+					return
+				}
+				last := offset + min(block, size-offset) - 1
+				response, err := c.getDownload(ctx, u, fmt.Sprintf("bytes=%d-%d", offset, last), etag)
+				if err == nil {
+					var count int64
+					count, err = consumeRange(ctx, response, io.NewOffsetWriter(dst, base+offset), offset, last, size, etag)
+					transferred.Add(count)
+					response.Body.Close()
+				}
+				if err != nil {
+					once.Do(func() { firstErr = err; cancel() })
+					return
+				}
+			}
+		}()
+	}
+feed:
+	for offset := end + 1; offset < size; offset += min(block, size-offset) {
+		select {
+		case jobs <- offset:
+		case <-ctx.Done():
+			break feed
+		}
+	}
+	close(jobs)
+	wg.Wait()
+	if firstErr != nil {
+		return transferred.Load(), firstErr
+	}
+	if ctx.Err() != nil {
+		return transferred.Load(), transferError(ctx, "download")
+	}
+	if _, err := dst.Seek(base+size, io.SeekStart); err != nil {
+		return transferred.Load(), errors.New("seek cache download destination")
+	}
+	return transferred.Load(), nil
+}
+
+func parseContentRange(raw string) (start, end, total int64, err error) {
+	bad := errors.New("invalid cache download content range")
+	if !strings.HasPrefix(raw, "bytes ") {
+		return 0, 0, 0, bad
+	}
+	rangePart, totalPart, ok := strings.Cut(strings.TrimPrefix(raw, "bytes "), "/")
+	if !ok {
+		return 0, 0, 0, bad
+	}
+	first, last, ok := strings.Cut(rangePart, "-")
+	if !ok {
+		return 0, 0, 0, bad
+	}
+	start, err = strconv.ParseInt(first, 10, 64)
+	if err != nil {
+		return 0, 0, 0, bad
+	}
+	end, err = strconv.ParseInt(last, 10, 64)
+	if err != nil {
+		return 0, 0, 0, bad
+	}
+	total, err = strconv.ParseInt(totalPart, 10, 64)
+	if err != nil || start < 0 || end < start || total <= end || raw != fmt.Sprintf("bytes %d-%d/%d", start, end, total) {
+		return 0, 0, 0, bad
+	}
+	return start, end, total, nil
+}
+
+func consumeRange(ctx context.Context, resp *http.Response, dst io.Writer, first, last, size int64, etag string) (int64, error) {
+	if resp.StatusCode != http.StatusPartialContent {
+		return 0, statusError("download range", resp.StatusCode)
+	}
+	start, end, total, err := parseContentRange(resp.Header.Get("Content-Range"))
+	if err != nil || start != first || end != last || total != size {
+		return 0, errors.New("invalid cache download content range")
+	}
+	if encoding := resp.Header.Get("Content-Encoding"); encoding != "" && encoding != "identity" {
+		return 0, errors.New("cache download range has transformed content")
+	}
+	if got := resp.Header.Get("ETag"); etag != "" && got != "" && got != etag {
+		return 0, errors.New("cache download object changed")
+	}
+	length := last - first + 1
+	if resp.ContentLength >= 0 && resp.ContentLength != length {
+		return 0, errors.New("cache download range length mismatch")
+	}
+	n, err := io.Copy(dst, io.LimitReader(resp.Body, length))
+	if err != nil {
+		return n, transferError(ctx, "download range body")
+	}
+	if n != length {
+		return n, errors.New("cache download range length mismatch")
+	}
+	var extra [1]byte
+	if _, err := io.ReadFull(resp.Body, extra[:]); err == nil {
+		return n, errors.New("cache download range length mismatch")
+	} else if err != io.EOF {
+		return n, transferError(ctx, "download range body")
 	}
 	return n, nil
 }

@@ -1,5 +1,9 @@
 # Roadmap and performance ideas
 
+The user's next 2026-11-10 request authorizes subagents to implement actionable local improvements and publish a replacement bundled preview for consumer testing. The tranche targets content-based module skip detection before compression, restore filesystem work/metrics and independently bounded archive range downloads. Retain archive/gzip defaults and compatible-cache lookup. Publication is authorized; further GitHub workflow dispatches and automatic triggers are not. Hosted performance conclusions still require measurements at matching workload revisions.
+
+Latest evidence: the [2026-11-10 Exasol investigation](docs/investigation-2026-11-10.md) confirms user-run Linux/amd64 and Windows/amd64 archive caching and useful warm test/build reuse. Initial non-controlled comparison exposes costly lint restore/post work, Windows archive filesystem work and module re-uploads despite unchanged file counts/payload sizes. Investigate these locally before further hosted measurements; no new implementation, dispatch or performance-default decision is implied.
+
 Priority order: **runtime performance, resource efficiency, maintainability**. Measure end-to-end effects rather than assuming a language, archive format, or storage service is faster.
 
 ## Milestone 1 â€” Toolchain installation and measurement

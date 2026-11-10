@@ -1,5 +1,13 @@
 # Benchmark methodology
 
+The 2026-11-10 preview work adds independent `cache-download-concurrency` (default 4, range 1-32) and `cache-download-chunk-bytes` (default 32 MiB). Concurrency 1 retains the single-GET path. The first range response establishes object size; a server returning a full 200 response is consumed directly. Chunked storage retains its separate worker bound. Compare request count, bytes and elapsed download time rather than assuming more workers improve all workloads.
+
+Split module saves now fingerprint paths, permissions and every file's bytes before packing, ignoring mtimes. Reports expose `module_check_ms` and `save_reason`; unchanged modules skip archive creation/compression and upload. Changed modules pay the fingerprint pass as well as packing. This changes the cost boundary from the older repack-and-compare implementation described in historical records.
+
+Restore reports split `archive_ms` into `archive_stage_ms`, `archive_preflight_ms`, `archive_merge_ms` and `archive_cleanup_ms`, with published/linked file counts and copied payload bytes. These are native wall-time intervals, not independent CPU measurements. Destination-volume private staging and no-replace hardlink publication can avoid the second payload copy; unsupported filesystems retain the exclusive-copy path. Measure actual counters and timing on each runner before making a speed claim.
+
+The [2026-11-10 Exasol investigation](investigation-2026-11-10.md) records initial observational comparisons from user-supplied cold/warm consumer runs and an existing upstream run. Different workload/dependency revisions and one sample per case prevent treating these as controlled benchmark results. Warm aggregate job time and pipeline critical-path time moved in different directions; preserve both measures in future comparisons.
+
 Measure total cost: action acquisition, process launch, version resolution, toolchain transfer, extraction, and the workload that follows. Report cold and warm cases separately. Never equate cross-compilation with platform validation.
 
 ## Installer and launcher comparison

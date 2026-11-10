@@ -46,6 +46,12 @@ inputs:
   upload-concurrency:
     description: Parallel blob upload workers.
     default: '4'
+  download-concurrency:
+    description: Parallel whole-archive download workers, 1 through 32.
+    default: '4'
+  download-chunk-bytes:
+    description: Whole-archive download range size in bytes.
+    default: '33554432'
   upload-chunk-bytes:
     description: Blob upload block size in bytes.
     default: '33554432'

@@ -66,6 +66,7 @@ func chunkBackend(b Backend) Backend {
 	if client, ok := b.(*cachebackend.Client); ok {
 		copy := *client
 		copy.Concurrency = 1
+		copy.DownloadConcurrency = 1
 		return &copy
 	}
 	return b

@@ -56,6 +56,8 @@ func run() error {
 	chunkWorkers := fs.String("cache-chunk-concurrency", input("CACHE-CHUNK-CONCURRENCY", fmt.Sprint(c.ChunkConcurrency)), "parallel chunk workers, 1..16")
 	workers := fs.String("cache-upload-concurrency", input("CACHE-UPLOAD-CONCURRENCY", fmt.Sprint(c.UploadConcurrency)), "parallel upload workers, 1..32")
 	chunk := fs.String("cache-upload-chunk-bytes", input("CACHE-UPLOAD-CHUNK-BYTES", fmt.Sprint(c.UploadChunkBytes)), "upload block size bytes")
+	downloadWorkers := fs.String("cache-download-concurrency", input("CACHE-DOWNLOAD-CONCURRENCY", fmt.Sprint(c.DownloadConcurrency)), "parallel archive download workers, 1..32; 1 uses a single GET")
+	downloadChunk := fs.String("cache-download-chunk-bytes", input("CACHE-DOWNLOAD-CHUNK-BYTES", fmt.Sprint(c.DownloadChunkBytes)), "archive download range size bytes")
 	if err := fs.Parse(os.Args[2:]); err != nil {
 		return err
 	}
@@ -86,6 +88,12 @@ func run() error {
 	}
 	if c.UploadChunkBytes, err = strconv.ParseInt(*chunk, 10, 64); err != nil {
 		return fmt.Errorf("cache-upload-chunk-bytes: %w", err)
+	}
+	if c.DownloadConcurrency, err = strconv.Atoi(*downloadWorkers); err != nil {
+		return fmt.Errorf("cache-download-concurrency: %w", err)
+	}
+	if c.DownloadChunkBytes, err = strconv.ParseInt(*downloadChunk, 10, 64); err != nil {
+		return fmt.Errorf("cache-download-chunk-bytes: %w", err)
 	}
 	if err = c.Validate(); err != nil {
 		return err

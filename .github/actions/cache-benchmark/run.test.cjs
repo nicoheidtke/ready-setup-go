@@ -12,3 +12,8 @@ test('passes paths and values as argv without shell interpretation or credential
 });
 
 test('requires a helper path', () => assert.throws(() => invocation({}), /helper path/));
+
+test('passes independent download controls', () => {
+  const call = invocation({ INPUT_HELPER: '/helper', 'INPUT_DOWNLOAD-CONCURRENCY': '1', 'INPUT_DOWNLOAD-CHUNK-BYTES': '1048576' });
+  assert.deepEqual(call.args, ['--download-concurrency', '1', '--download-chunk-bytes', '1048576']);
+});

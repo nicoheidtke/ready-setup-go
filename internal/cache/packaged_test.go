@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // TestPackagedLifecycle is opt-in: it consumes a prebuilt distribution and an
@@ -70,6 +72,7 @@ func TestPackagedLifecycle(t *testing.T) {
 	}
 	var mu sync.Mutex
 	var stored []*remoteEntry
+	var rangeRequests int
 	var server *httptest.Server
 	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
@@ -86,7 +89,10 @@ func TestPackagedLifecycle(t *testing.T) {
 						entry.data, _ = io.ReadAll(r.Body)
 						w.WriteHeader(http.StatusCreated)
 					case http.MethodGet:
-						w.Write(entry.data)
+						if r.Header.Get("Range") != "" {
+							rangeRequests++
+						}
+						http.ServeContent(w, r, "cache", time.Time{}, bytes.NewReader(entry.data))
 					default:
 						w.WriteHeader(405)
 					}
@@ -162,9 +168,11 @@ func TestPackagedLifecycle(t *testing.T) {
 		env := map[string]string{
 			"RUNNER_TEMP": runnerTemp, "RUNNER_TOOL_CACHE": "", "GITHUB_WORKSPACE": workspace, "GITHUB_REPOSITORY": "test/local", "GITHUB_WORKFLOW_REF": "test/local/.github/workflows/packaged.yml@refs/heads/main", "GITHUB_JOB": "packaged-smoke", "GITHUB_ACTION": fmt.Sprintf("packaged_smoke_%d", iteration), "GITHUB_RUN_ID": "local", "GITHUB_RUN_ATTEMPT": "1",
 			"INPUT_GO-VERSION": version, "INPUT_CHECK-LATEST": "false", "INPUT_CACHE": "restore-save", "INPUT_CACHE-LAYOUT": "combined", "INPUT_CACHE-COMPRESSION": "gzip", "INPUT_CACHE-STRICT": "true", "INPUT_CACHE-SCOPE": "local-packaged-smoke", "INPUT_CACHE-DEPENDENCY-PATH": ".", "INPUT_CACHE-REPORT": filepath.Join(root, "cache-report.json"),
-			"INPUT_CACHE-UPLOAD-CHUNK-BYTES": "4194304000",
-			"INPUT_CACHE-STORAGE":            storage,
-			"GOCACHE":                        build, "GOMODCACHE": modules, "GOPATH": filepath.Join(root, "gopath"), "GOROOT": toolchain, "GOTOOLCHAIN": "local", "GOTELEMETRY": "off", "ACTIONS_RESULTS_URL": server.URL, "ACTIONS_RUNTIME_TOKEN": "local-test-main", "ACTIONS_CACHE_MODE": "", "STATE_cache_state": "", "STATE_cache_strict": "",
+			"INPUT_CACHE-UPLOAD-CHUNK-BYTES":   "4194304000",
+			"INPUT_CACHE-DOWNLOAD-CONCURRENCY": "4",
+			"INPUT_CACHE-DOWNLOAD-CHUNK-BYTES": "1048576",
+			"INPUT_CACHE-STORAGE":              storage,
+			"GOCACHE":                          build, "GOMODCACHE": modules, "GOPATH": filepath.Join(root, "gopath"), "GOROOT": toolchain, "GOTOOLCHAIN": "local", "GOTELEMETRY": "off", "ACTIONS_RESULTS_URL": server.URL, "ACTIONS_RUNTIME_TOKEN": "local-test-main", "ACTIONS_CACHE_MODE": "", "STATE_cache_state": "", "STATE_cache_strict": "",
 			"HTTP_PROXY": "http://127.0.0.1:1", "HTTPS_PROXY": "http://127.0.0.1:1", "NO_PROXY": "127.0.0.1,localhost",
 		}
 		for k, v := range fields {
@@ -259,6 +267,12 @@ func TestPackagedLifecycle(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
+	if storage == "archive" && rangeRequests < 2 {
+		t.Fatalf("packaged archive restore did not exercise multiple ranges: %d", rangeRequests)
+	}
+	if storage == "chunked" && rangeRequests != 0 {
+		t.Fatalf("chunk workers unexpectedly used nested ranges: %d", rangeRequests)
+	}
 	var snapshots []string
 	for _, entry := range stored {
 		if !entry.finalized {

@@ -3,7 +3,6 @@ package cache
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -33,7 +32,8 @@ type Snapshot struct {
 	CompatiblePrefix string              `json:"compatible_prefix"`
 	Version          string              `json:"version"`
 	Roots            []cachearchive.Root `json:"roots"`
-	RestoredDigest   string              `json:"restored_digest,omitempty"`
+	// RestoredDigest identifies validated archive contents, excluding mtimes.
+	RestoredDigest string `json:"restored_digest,omitempty"`
 }
 
 type State struct {
@@ -43,21 +43,31 @@ type State struct {
 }
 
 type Metric struct {
-	Kind         string  `json:"kind"`
-	Key          string  `json:"key"`
-	MatchedKey   string  `json:"matched_key,omitempty"`
-	Hit          bool    `json:"hit"`
-	Skipped      bool    `json:"skipped"`
-	Bytes        int64   `json:"transferred_bytes"`
-	Files        int64   `json:"archive_files"`
-	PayloadBytes int64   `json:"archive_payload_bytes"`
-	Chunks       int     `json:"chunks,omitempty"`
-	ReusedChunks int     `json:"reused_chunks,omitempty"`
-	ReusedBytes  int64   `json:"reused_bytes,omitempty"`
-	LookupMS     float64 `json:"lookup_ms"`
-	TransferMS   float64 `json:"transfer_ms"`
-	ArchiveMS    float64 `json:"archive_ms"`
-	Error        string  `json:"error,omitempty"`
+	Kind               string  `json:"kind"`
+	Key                string  `json:"key"`
+	MatchedKey         string  `json:"matched_key,omitempty"`
+	Hit                bool    `json:"hit"`
+	Skipped            bool    `json:"skipped"`
+	Bytes              int64   `json:"transferred_bytes"`
+	Files              int64   `json:"archive_files"`
+	PayloadBytes       int64   `json:"archive_payload_bytes"`
+	Chunks             int     `json:"chunks,omitempty"`
+	ReusedChunks       int     `json:"reused_chunks,omitempty"`
+	ReusedBytes        int64   `json:"reused_bytes,omitempty"`
+	LookupMS           float64 `json:"lookup_ms"`
+	TransferMS         float64 `json:"transfer_ms"`
+	ArchiveMS          float64 `json:"archive_ms"`
+	ArchiveStageMS     float64 `json:"archive_stage_ms,omitempty"`
+	ArchivePreflightMS float64 `json:"archive_preflight_ms,omitempty"`
+	ArchiveMergeMS     float64 `json:"archive_merge_ms,omitempty"`
+	ArchiveCleanupMS   float64 `json:"archive_cleanup_ms,omitempty"`
+	PublishedFiles     int64   `json:"published_files,omitempty"`
+	LinkedFiles        int64   `json:"linked_files,omitempty"`
+	CopiedFiles        int64   `json:"copied_files,omitempty"`
+	CopiedBytes        int64   `json:"copied_bytes,omitempty"`
+	ModuleCheckMS      float64 `json:"module_check_ms,omitempty"`
+	SaveReason         string  `json:"save_reason,omitempty"`
+	Error              string  `json:"error,omitempty"`
 }
 type Report struct {
 	Phase          string   `json:"phase"`
@@ -86,7 +96,7 @@ func newBackend(c Config) (Backend, error) {
 	if url == "" || token == "" {
 		return nil, fmt.Errorf("runtime cache credentials unavailable; use the Node action on a cache-v2-capable GitHub runner")
 	}
-	return &cachebackend.Client{BaseURL: url, Token: token, MaxBytes: c.MaxBytes, Concurrency: c.UploadConcurrency, BlockSize: c.UploadChunkBytes}, nil
+	return &cachebackend.Client{BaseURL: url, Token: token, MaxBytes: c.MaxBytes, Concurrency: c.UploadConcurrency, BlockSize: c.UploadChunkBytes, DownloadConcurrency: c.DownloadConcurrency, DownloadBlockSize: c.DownloadChunkBytes}, nil
 }
 
 // The runner may grant only a subset of cache operations. Unknown/unset modes
@@ -175,6 +185,21 @@ func Save(ctx context.Context, b Backend, s State) (Report, error) {
 		}
 		m := Metric{Kind: snap.Kind, Key: snap.Key}
 		err := func() error {
+			if snap.Kind == "modules" && snap.RestoredDigest != "" {
+				t := time.Now()
+				stats, err := cachearchive.Fingerprint(ctx, snap.Roots, s.Config.MaxBytes)
+				m.ModuleCheckMS = ms(t)
+				m.ArchiveMS = m.ModuleCheckMS
+				if err != nil {
+					return err
+				}
+				m.Files, m.PayloadBytes = stats.Files, stats.Bytes
+				if stats.ContentDigest == snap.RestoredDigest {
+					m.Skipped, m.SaveReason = true, "unchanged-module-content"
+					return nil
+				}
+				m.SaveReason = "module-content-or-mode-changed"
+			}
 			f, err := os.CreateTemp("", "setup-go-better-save-*")
 			if err != nil {
 				return err
@@ -188,17 +213,17 @@ func Save(ctx context.Context, b Backend, s State) (Report, error) {
 			if s.Config.BuildMaxAge > 0 && snap.Kind != "modules" {
 				opts.TrimBefore = time.Now().Add(-s.Config.BuildMaxAge)
 			}
-			h := sha256.New()
 			t := time.Now()
-			stats, err := cachearchive.Pack(ctx, io.MultiWriter(f, h), snap.Roots, opts)
-			m.ArchiveMS = ms(t)
+			stats, err := cachearchive.Pack(ctx, f, snap.Roots, opts)
+			m.ArchiveMS += ms(t)
 			if err != nil {
 				return err
 			}
 			m.Files = stats.Files
 			m.PayloadBytes = stats.Bytes
-			if stats.Files == 0 || (snap.Kind == "modules" && snap.RestoredDigest != "" && snap.RestoredDigest == hex.EncodeToString(h.Sum(nil))) {
+			if stats.Files == 0 {
 				m.Skipped = true
+				m.SaveReason = "empty-cache"
 				return nil
 			}
 			size, err := f.Seek(0, io.SeekCurrent)

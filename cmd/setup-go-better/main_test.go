@@ -26,6 +26,10 @@ func TestCacheInputErrorsPrecedeInstallation(t *testing.T) {
 		{"age", "--cache-build-max-age=-1h", "nonnegative"},
 		{"bytes", "--cache-max-bytes=0", "max bytes"},
 		{"workers", "--cache-upload-concurrency=33", "concurrency"},
+		{"download workers", "--cache-download-concurrency=33", "concurrency"},
+		{"download worker parse", "--cache-download-concurrency=typo", "cache-download-concurrency"},
+		{"download block", "--cache-download-chunk-bytes=0", "chunk bytes"},
+		{"download block parse", "--cache-download-chunk-bytes=typo", "cache-download-chunk-bytes"},
 		{"chunk workers", "--cache-chunk-concurrency=17", "cache-chunk-concurrency"},
 		{"chunk worker parse", "--cache-chunk-concurrency=typo", "cache-chunk-concurrency"},
 		{"chunk", "--cache-upload-chunk-bytes=0", "chunk bytes"},
@@ -46,6 +50,17 @@ func TestPostNoStateAndArguments(t *testing.T) {
 	}
 	if err := runArgs(t, "post", "extra"); err == nil {
 		t.Fatal("post silently ignored arguments")
+	}
+}
+
+func TestDownloadActionInputsValidateBeforeInstallation(t *testing.T) {
+	for _, input := range []string{"INPUT_CACHE-DOWNLOAD-CONCURRENCY", "INPUT_CACHE-DOWNLOAD-CHUNK-BYTES"} {
+		t.Run(input, func(t *testing.T) {
+			t.Setenv(input, "invalid")
+			if err := runArgs(t, "setup", "--go-version=1.26.8"); err == nil || !strings.Contains(err.Error(), "cache-download-") {
+				t.Fatalf("download input was ignored: %v", err)
+			}
+		})
 	}
 }
 

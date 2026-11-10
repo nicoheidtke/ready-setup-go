@@ -58,6 +58,12 @@ on:
       upload-concurrency:
         description: Parallel blob upload workers, 1 through 32
         default: '4'
+      download-concurrency:
+        description: Parallel whole-archive download workers, 1 through 32
+        default: '4'
+      download-chunk-bytes:
+        description: Whole-archive download range bytes, 1 through 4194304000
+        default: '33554432'
       upload-chunk-bytes:
         description: Blob upload block bytes, 1 through 4194304000
         default: '33554432'
@@ -159,6 +165,8 @@ jobs:
           dependency: ${{ inputs.dependency }}
           max-bytes: ${{ inputs.max-bytes }}
           upload-concurrency: ${{ inputs.upload-concurrency }}
+          download-concurrency: ${{ inputs.download-concurrency }}
+          download-chunk-bytes: ${{ inputs.download-chunk-bytes }}
           upload-chunk-bytes: ${{ inputs.upload-chunk-bytes }}
           build-max-age: ${{ inputs.build-max-age }}
           out: cache-reports/observations.json

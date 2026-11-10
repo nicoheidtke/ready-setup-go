@@ -46,6 +46,12 @@ inputs:
   cache-upload-concurrency:
     description: Parallel upload worker count, 1 through 32.
     default: '4'
+  cache-download-concurrency:
+    description: Parallel whole-archive download workers, 1 through 32. Set 1 for a single GET.
+    default: '4'
+  cache-download-chunk-bytes:
+    description: Whole-archive download range size in bytes, 1 through 4194304000.
+    default: '33554432'
   cache-upload-chunk-bytes:
     description: Upload block size in bytes, 1 through 4194304000.
     default: '33554432'

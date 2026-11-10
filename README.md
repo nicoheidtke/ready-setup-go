@@ -59,6 +59,8 @@ Go 1.x starting at 1.26 is supported. Prereleases, aliases such as `stable`, cus
 | `cache-strict` | `false` | Fail on cache operational errors instead of warning and continuing. Invalid inputs always fail. |
 | `cache-upload-concurrency` | `4` | Parallel upload workers, 1 through 32. |
 | `cache-upload-chunk-bytes` | `33554432` | Upload block size in bytes, 1 through 4194304000. |
+| `cache-download-concurrency` | `4` | Whole-archive download workers, 1 through 32. Set 1 for a single GET. |
+| `cache-download-chunk-bytes` | `33554432` | Whole-archive download range size in bytes, 1 through 4194304000. |
 | `cache-save-on-failure` | `false` | Save after failed jobs as well as successful jobs. Cancelled jobs never save. |
 | `cache-report` | Empty | Optional restore JSON path. The post-job save report appends `.post.json`. |
 
@@ -67,6 +69,8 @@ Go 1.x starting at 1.26 is supported. Prereleases, aliases such as `stable`, cus
 Caching uses GitHub Actions cache v2 and the runner's injected credentials. The selected Go executable supplies `GOCACHE` and `GOMODCACHE`, respecting your configured paths. Cache-off avoids cache path discovery, dependency scanning, transfer, and snapshot creation.
 
 Cache lookup and download begin once the exact Go version is selected and may overlap toolchain download/extraction. Cache paths still come from the selected installed Go executable; files are validated and merged only afterward. Set `cache-overlap: false` for sequential execution. Overlap may retain both split downloads temporarily; sequential restore retains one at a time.
+
+Whole-archive downloads use bounded parallel HTTP ranges when supported by the cache service. Servers that ignore the initial range request fall back to a single download. `cache-download-concurrency` and `cache-download-chunk-bytes` control this independently of upload settings; set concurrency to 1 to use a single GET. Chunked storage uses its own chunk worker limit instead.
 
 `cache-storage: chunked` splits the deterministic uncompressed tar into content-defined chunks (1-8 MiB, approximately 4 MiB target), compresses each independently when gzip is selected, and uploads only missing immutable chunks plus a fresh manifest. It uses the same GitHub cache credentials and service and needs no extra action or infrastructure. All referenced chunks are downloaded and checksum-verified before whole-archive validation and merge. Missing referenced entries produce a cache miss without merging the affected archive; other transfer/corruption errors follow `cache-strict`. Chunked and whole-archive namespaces are separate.
 
@@ -92,7 +96,7 @@ Restore first looks for recent dependency-matching snapshots, then compatible sn
       libraries
 ```
 
-A save uses a fresh immutable key incorporating run and attempt identity plus a random invocation suffix. Unchanged restored module archives in split mode skip upload after local packing and comparison; build archives remain fresh. Empty archives skip upload. Combined mode always considers the complete snapshot.
+A save uses a fresh immutable key incorporating run and attempt identity plus a random invocation suffix. In split mode, restored module contents are compared with the local tree before packing: unchanged paths, file contents and permissions skip compression and upload even if timestamps changed. Same-size content changes are detected. Build archives remain fresh. Empty archives skip upload. Combined mode always considers the complete snapshot.
 
 Downloads are validated in staging before local caches are modified. Existing local regular files win, and unrelated entries are retained. Links, unsafe paths, special files, duplicate entries, and case collisions are rejected. Corrupt downloads leave local data untouched; a merge I/O error may leave successfully added new files. The action targets trusted GitHub-hosted runner filesystems.
 

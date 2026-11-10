@@ -113,6 +113,8 @@ func run() error {
 	flag.StringVar(&o.Config.Compression, "compression", "gzip", "gzip or none")
 	flag.Int64Var(&o.Config.MaxBytes, "max-bytes", o.Config.MaxBytes, "uncompressed archive and transferred archive byte limit")
 	flag.IntVar(&o.Config.UploadConcurrency, "upload-concurrency", o.Config.UploadConcurrency, "parallel blob upload workers")
+	flag.IntVar(&o.Config.DownloadConcurrency, "download-concurrency", o.Config.DownloadConcurrency, "parallel archive download workers, 1..32")
+	flag.Int64Var(&o.Config.DownloadChunkBytes, "download-chunk-bytes", o.Config.DownloadChunkBytes, "archive download range size bytes")
 	flag.Int64Var(&o.Config.UploadChunkBytes, "upload-chunk-bytes", o.Config.UploadChunkBytes, "blob upload block bytes")
 	flag.DurationVar(&o.Config.BuildMaxAge, "build-max-age", 0, "optional archive-only build-cache age filter")
 	flag.StringVar(&o.DependencyModule, "dependency-module", "github.com/google/uuid", "module changed outside timing in dependency scenario")
@@ -132,7 +134,7 @@ func run() error {
 	if os.Getenv("ACTIONS_RUNTIME_TOKEN") == "" || os.Getenv("ACTIONS_RESULTS_URL") == "" {
 		return errors.New("cache benchmark requires runner credentials; invoke the Node benchmark action")
 	}
-	b := &cachebackend.Client{BaseURL: os.Getenv("ACTIONS_RESULTS_URL"), Token: os.Getenv("ACTIONS_RUNTIME_TOKEN"), MaxBytes: o.Config.MaxBytes, BlockSize: o.Config.UploadChunkBytes, Concurrency: o.Config.UploadConcurrency}
+	b := &cachebackend.Client{BaseURL: os.Getenv("ACTIONS_RESULTS_URL"), Token: os.Getenv("ACTIONS_RUNTIME_TOKEN"), MaxBytes: o.Config.MaxBytes, BlockSize: o.Config.UploadChunkBytes, Concurrency: o.Config.UploadConcurrency, DownloadConcurrency: o.Config.DownloadConcurrency, DownloadBlockSize: o.Config.DownloadChunkBytes}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Hour)
 	defer cancel()
 	r, err := benchmark(ctx, o, b, runWorkload)

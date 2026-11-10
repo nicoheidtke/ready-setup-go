@@ -1,5 +1,24 @@
 # Development and release preparation
 
+## Consumer improvement preview (2026-11-10)
+
+The user authorized delegated local implementation and publication of a replacement bundled preview after the investigation. This supersedes the earlier investigation-only publication restriction. GitHub workflow dispatch/rerun, automatic triggers, visibility changes and upstream Exasol changes remain outside this authorization.
+
+The tranche implements unchanged-module detection before compression, destination-volume staging with no-replace publication, finer restore metrics and configurable bounded whole-archive range downloads. Storage and compression defaults remain archive/gzip; old compatible archives remain readable. Split transfer/merge pipelining remains deferred: it needs additional initialization/cancellation coordination and the earlier traces offered only about 6-10 seconds of possible overlap before the range-download changes. Whole-build archive saves still upload fresh complete snapshots; chunked reuse remains optional.
+
+Local validation on Windows/amd64:
+
+- Full tests and vet passed with pinned Go 1.27.1 and supported Go 1.26.4. New cases cover timestamp-only module churn, same-size mutations with preserved timestamps, existing local module contents, no-compression/no-upload skips, invalid ranges/lengths/encodings, single-response fallback, worker bounds, cancellation/join, no-replace publication, copy fallback and staging cleanup.
+- All nine Node tests passed on Node 26.3.0. Actionlint 1.7.12 passed all manual workflows after regenerating local action metadata (optional shellcheck/pyflakes disabled). New runtime credentials are handled by the existing Node 24 action lifecycle; these local checks do not execute Node 24.
+- The six-platform candidate cross-built with Go 1.27.1. Its native Windows root main/post and Node alias passed against the local cache-v2 fixture for archive and chunked storage, including a real Go 1.26.4 workload and Bash offline reuse. Archive mode exercised multiple HTTP ranges; chunk mode verified no nested ranges. Warm workload tests reported cached results, and both restores published 1,050 files by hardlink without a second payload copy.
+- A synthetic uncompressed restore fixture with 512 nested read-only module files measured 4.012 seconds/op on frozen pre-change source `a2f20c4` and 2.128 seconds/op on the new source, three iterations each on this Windows machine. Ordering was not paired, there are too few samples for a performance conclusion, and this excludes hosted networking/workload behavior. The benchmark remains in `internal/cachearchive/restore_benchmark_test.go` for repeatable diagnosis.
+
+Candidate paths are `.cache/improved-dist-20261110` and `.cache/improved-artifacts-20261110`; native lifecycle logs are `.cache/improved-archive-lifecycle-20261110.log` and `.cache/improved-chunked-lifecycle-20261110.log`. Frozen-source reproducibility and immutable publication are recorded below when completed. No hosted workflows were dispatched. The new range path and restore optimizations still need consumer-run verification on GitHub.
+
+## Latest consumer evidence (2026-11-10)
+
+The user supplied independently executed Exasol cold/warm runs on Linux/amd64 and Windows/amd64. Existing logs confirm successful split/gzip archive restoration and automatic post saves; most warm unit-test packages reused cached results. This extends the earlier Linux smoke evidence, but does not validate chunked storage or the full policy/platform matrix. The [consumer investigation](investigation-2026-11-10.md) records exact revisions, timings, transfer/packing costs, unexpected module re-uploads and comparison limitations. No workflows were dispatched during the investigation; further runs still require authorization.
+
 The consumer README describes the action interface. Development status and future ideas belong in [ROADMAP.md](../ROADMAP.md), not the README.
 
 ## Current local implementation and validation

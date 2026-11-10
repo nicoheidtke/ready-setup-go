@@ -2,10 +2,7 @@ package cache
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
-	"io"
 	"os"
 	"time"
 
@@ -166,14 +163,17 @@ func (p *Prefetch) merge(ctx context.Context, s *State) (Report, error) {
 				return err
 			}
 			defer f.Close()
-			h := sha256.New()
 			compression := s.Config.Compression
 			if s.Config.Storage == "chunked" {
 				compression = "none"
 			}
 			t := time.Now()
-			stats, err := cachearchive.Restore(ctx, io.TeeReader(f, h), s.Snapshots[i].Roots, cachearchive.Options{Compression: compression, MaxBytes: s.Config.MaxBytes})
+			stats, err := cachearchive.Restore(ctx, f, s.Snapshots[i].Roots, cachearchive.Options{Compression: compression, MaxBytes: s.Config.MaxBytes, ContentIdentity: m.Kind == "modules"})
 			m.ArchiveMS = ms(t)
+			m.ArchiveStageMS, m.ArchivePreflightMS = stats.StageMS, stats.PreflightMS
+			m.ArchiveMergeMS, m.ArchiveCleanupMS = stats.MergeMS, stats.CleanupMS
+			m.PublishedFiles, m.LinkedFiles, m.CopiedBytes = stats.PublishedFiles, stats.LinkedFiles, stats.CopiedBytes
+			m.CopiedFiles = stats.CopiedFiles
 			if err != nil {
 				return err
 			}
@@ -181,7 +181,7 @@ func (p *Prefetch) merge(ctx context.Context, s *State) (Report, error) {
 			m.Files = stats.Files
 			m.PayloadBytes = stats.Bytes
 			if m.Kind == "modules" {
-				s.Snapshots[i].RestoredDigest = hex.EncodeToString(h.Sum(nil))
+				s.Snapshots[i].RestoredDigest = stats.ContentDigest
 			}
 			return nil
 		}()

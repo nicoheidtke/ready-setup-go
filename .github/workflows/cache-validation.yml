@@ -31,6 +31,12 @@ on:
       chunk-concurrency:
         description: Parallel chunk workers, 1 through 16
         default: '4'
+      download-concurrency:
+        description: Parallel whole-archive download workers, 1 through 32
+        default: '4'
+      download-chunk-bytes:
+        description: Whole-archive download range bytes, 1 through 4194304000
+        default: '33554432'
       storage:
         type: choice
         description: Whole archive or content-defined chunked snapshots
@@ -77,6 +83,8 @@ jobs:
           cache-scope: ${{ inputs.scope }}
           cache-layout: ${{ inputs.layout }}
           cache-chunk-concurrency: ${{ inputs.chunk-concurrency }}
+          cache-download-concurrency: ${{ inputs.download-concurrency }}
+          cache-download-chunk-bytes: ${{ inputs.download-chunk-bytes }}
           cache-storage: ${{ inputs.storage }}
           cache-overlap: ${{ inputs.overlap }}
           cache-compression: ${{ inputs.compression }}

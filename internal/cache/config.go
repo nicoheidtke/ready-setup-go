@@ -24,28 +24,33 @@ const Format = "sgb-cache-v1"
 const DefaultMaxBytes int64 = 10 << 30
 
 type Config struct {
-	Mode              string        `json:"mode"`
-	Layout            string        `json:"layout"`
-	Compression       string        `json:"compression"`
-	ChunkConcurrency  int           `json:"chunk_concurrency"`
-	Storage           string        `json:"storage"`
-	Overlap           bool          `json:"overlap"`
-	Scope             string        `json:"scope"`
-	DependencyPaths   string        `json:"dependency_paths"`
-	BuildMaxAge       time.Duration `json:"build_max_age"`
-	MaxBytes          int64         `json:"max_bytes"`
-	UploadConcurrency int           `json:"upload_concurrency"`
-	UploadChunkBytes  int64         `json:"upload_chunk_bytes"`
-	Strict            bool          `json:"strict"`
-	SaveOnFailure     bool          `json:"save_on_failure"`
-	Report            string        `json:"report,omitempty"`
+	Mode                string        `json:"mode"`
+	Layout              string        `json:"layout"`
+	Compression         string        `json:"compression"`
+	ChunkConcurrency    int           `json:"chunk_concurrency"`
+	Storage             string        `json:"storage"`
+	Overlap             bool          `json:"overlap"`
+	Scope               string        `json:"scope"`
+	DependencyPaths     string        `json:"dependency_paths"`
+	BuildMaxAge         time.Duration `json:"build_max_age"`
+	MaxBytes            int64         `json:"max_bytes"`
+	UploadConcurrency   int           `json:"upload_concurrency"`
+	UploadChunkBytes    int64         `json:"upload_chunk_bytes"`
+	DownloadConcurrency int           `json:"download_concurrency"`
+	DownloadChunkBytes  int64         `json:"download_chunk_bytes"`
+	Strict              bool          `json:"strict"`
+	SaveOnFailure       bool          `json:"save_on_failure"`
+	Report              string        `json:"report,omitempty"`
 }
 
 func DefaultConfig() Config {
-	return Config{Mode: "off", Layout: "split", Compression: "gzip", Storage: "archive", ChunkConcurrency: 4, Overlap: true, MaxBytes: DefaultMaxBytes, UploadConcurrency: 4, UploadChunkBytes: 32 << 20}
+	return Config{Mode: "off", Layout: "split", Compression: "gzip", Storage: "archive", ChunkConcurrency: 4, Overlap: true, MaxBytes: DefaultMaxBytes, UploadConcurrency: 4, UploadChunkBytes: 32 << 20, DownloadConcurrency: 4, DownloadChunkBytes: 32 << 20}
 }
 
 func (c Config) Validate() error {
+	if c.DownloadConcurrency < 1 || c.DownloadConcurrency > 32 || c.DownloadChunkBytes < 1 || c.DownloadChunkBytes > 4000<<20 {
+		return fmt.Errorf("cache download concurrency must be 1..32 and chunk bytes 1..4194304000")
+	}
 	if c.ChunkConcurrency < 1 || c.ChunkConcurrency > 16 {
 		return fmt.Errorf("cache-chunk-concurrency must be 1..16")
 	}

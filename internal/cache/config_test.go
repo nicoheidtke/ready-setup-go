@@ -8,6 +8,30 @@ import (
 	"testing"
 )
 
+func TestDownloadConfigurationBounds(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		workers int
+		bytes   int64
+		valid   bool
+	}{
+		{"minimum", 1, 1, true},
+		{"maximum", 32, 4000 << 20, true},
+		{"disabled workers", 0, 32 << 20, false},
+		{"excess workers", 33, 32 << 20, false},
+		{"empty block", 4, 0, false},
+		{"excess block", 4, (4000 << 20) + 1, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := DefaultConfig()
+			c.DownloadConcurrency, c.DownloadChunkBytes = tc.workers, tc.bytes
+			if err := c.Validate(); (err == nil) != tc.valid {
+				t.Fatalf("configuration validation: %v", err)
+			}
+		})
+	}
+}
+
 func TestDependenciesMonorepoAndIgnoredOutputs(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
