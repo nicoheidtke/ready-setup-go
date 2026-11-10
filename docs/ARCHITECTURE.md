@@ -1,5 +1,7 @@
 # Architecture and resource behavior
 
+Private cache restore staging reuses successfully prepared directory paths for the duration of one restore. Uncompressed tar packing coalesces output through a bounded 256 KiB buffer, including raw archives used by chunked saves. The tar writer closes before the buffer flushes, and flush errors fail packing before upload. These optimizations preserve archive bytes and destination publication rules.
+
 The root action uses GitHub's Node 24 runtime for credentials and automatic post-job hooks. Minimal, dependency-free launcher glue invokes a precompiled Go executable; installation, cache policy, archive handling and networking stay in Go. Consumers do not install npm packages or build the action. A bundled distribution contains six executables, so action acquisition transfers binaries for platforms the current job does not use.
 
 The `experimental/node` path aliases the root lifecycle. The Bash composite at `experimental/composite` installs Go only and exists for launcher comparisons; it does not provide automatic caching. See [usage](USAGE.md) for the public interface, [development](DEVELOPMENT.md) for packaging and verification, and the [cache protocol](../internal/cachebackend/PROTOCOL.md) for service details.
@@ -18,7 +20,13 @@ Whole-archive downloads use bounded parallel HTTP ranges when the service suppor
 
 Restore validates the complete tar/compression stream in private staging before changing destination cache entries. Staging uses the destination filesystem where possible. Validated files are published with non-overwriting hard links; unsupported filesystems retain an exclusive-create copy fallback. Existing regular files win. Private staging and temporarily relaxed read-only directory modes are cleaned up/restored. These guarantees target trusted runner filesystems, not hostile concurrent writers.
 
+Directory/root preparation remains ordered. `cache-restore-concurrency` bounds independent file publication afterward (default four, range 1-16). Workers have private counters and 32 KiB fallback-copy buffers; all workers join before temporary staging is removed or directory modes are restored. Set it to 1 for sequential publication. Tar validation and staging remain sequential, and this limit does not multiply download/chunk workers.
+
 Whole-archive saves walk and pack the cache into a temporary file. In split mode, a restored module tree is first fingerprinted by paths, permissions and full file contents, ignoring timestamps. Equal content skips packing and upload; changed modules pay the check plus packing. Build snapshots remain fresh. This trades repeated upload avoidance against local reads, CPU, temporary disk and cache entry growth.
+
+Whole-archive gzip packs use `cache-compression-concurrency` (default four, range 1-16). Fixed 4 MiB raw-tar blocks are compressed with the standard gzip level and written in order as concatenated gzip members. Worker count and input write sizes do not change encoded bytes. Existing gzip readers accept the continuous tar stream; cache compatibility namespaces are unchanged. Concurrency 1 compresses these same fixed members sequentially. Member boundaries can affect compression ratio relative to the older single-member stream, so record encoded size as well as elapsed time.
+
+Submitted blocks are bounded until ordered output completes, avoiding an unbounded reorder queue behind a slow block or destination. Steady retained payload capacity is approximately 12 MiB per worker plus one 4 MiB producer block (52 MiB at four workers). Buffer growth, garbage collection, codec state and normal runtime overhead can increase memory beyond that allowance; it is not a peak-memory or resident-memory guarantee. Failed or cancelled packing joins workers before returning. This compression pool is unused for uncompressed archives and for chunked packing, whose separate chunk workers perform compression.
 
 ## Optional chunked storage
 

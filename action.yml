@@ -31,6 +31,12 @@ inputs:
   cache-compression:
     description: Archive compression, gzip or none.
     default: gzip
+  cache-compression-concurrency:
+    description: Whole-archive gzip workers, 1 through 16. Chunked storage has its own workers.
+    default: '4'
+  cache-restore-concurrency:
+    description: Validated-file publication workers, 1 through 16. Set 1 for sequential publication.
+    default: '4'
   cache-dependency-path:
     description: Newline-separated workspace-relative manifest files or recursively scanned directories. Default scans all modules, excluding cache/output/vendor directories.
     default: ''

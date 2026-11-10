@@ -70,3 +70,52 @@ Prioritize local correctness-preserving investigation before another hosted run:
 5. Eventually compare at the same workload/dependency revision and fixed runner image, separating action implementation from workflow restructuring. Include post hooks and critical-path time alongside aggregate job seconds, bytes and cache growth.
 
 No further dispatch, automatic trigger, publication or upstream change is authorized by this investigation request.
+
+## Follow-up: improved preview consumer run
+
+The user supplied completed run [42862214728](https://github.com/nicoheidtke/exasol-personal/actions/runs/42862214728). All jobs succeeded (SonarQube skipped). It checked out consumer `76322ee01b0481d7bffd98d45abb89d2674f2a76` and improved preview `e6e119a8b0b524a6ac1606d660c48603c11753df`. The only consumer change from the preceding warm run was the action SHA in `.github/actions/setup-go-better/action.yml`; no application/dependency files changed. Go remained 1.27.0, split/gzip archive restore-save, overlap enabled, four download/upload workers with 32 MiB blocks, no trimming. Strict errors remained off, but no cache warnings/errors appeared. No workflows were dispatched during this investigation.
+
+| Job | Previous warm elapsed | New elapsed | Previous restore / save | New restore / save |
+| --- | ---: | ---: | ---: | ---: |
+| lint-go | 199s | 135s | 109.6s / 40.9s | 51.4s / 27.5s |
+| build Linux | 88s | 83s | 36.9s / 20.5s | 23.5s / 20.5s |
+| build Windows | 185s | 185s | 115.4s / 26.2s | 97.9s / 30.0s |
+| tests-unit | 102s | 64s | 55.4s / 21.3s | 17.3s / 20.8s |
+| tests-launcher Linux | 88s | 101s | 1.2s / 1.2s | 2.0s / 2.0s |
+| tests-launcher Windows | 200s | 134s | 4.7s / 2.7s | 3.2s / 1.9s |
+
+Definitions remain timestamped job-log elapsed intervals including post hooks, not billed/queued time. Across six Go jobs the aggregate changed from 861.5s to 701.7s; their span changed from 597.3s to 469.3s (about 9m57s to 7m49s). These are single-run observations with runner and cache-content variation, not a measured general speedup. The Windows build's initial checkout took about 21s versus about 7s previously, masking part of its cache restore reduction. Windows launcher pytest itself changed from 128.41s to 89.13s, so its whole-job gain must not be credited to the action.
+
+### What the new metrics establish
+
+- All four warm lint/build/unit jobs restored module and build archives. Launcher build archives restored; empty module caches again produced expected misses. Go jobs logged no module downloads and unit tests still reused cached package results.
+- Every published restored file used hardlinks, with no copy fallback reported, on both Linux and Windows. This verifies the intended no-second-payload-copy path in these hosted jobs, not every filesystem/platform/policy case.
+- Lint module upload skipped with `unchanged-module-content`; checking the 2.11GB / 80,189-file module tree took 3.64s. Previously its skip required 13.08s of packing. The latest lint build archive still took 20.77s to pack and 3.00s to upload about 507MB.
+- Each of Linux build, Windows build and unit tests gained exactly one regular module-cache file and 151 payload bytes. Counts changed 17,992→17,993, 18,066→18,067 and 30,101→30,102 respectively. Those jobs re-uploaded about 375MB, 376MB and 437MB of modules. This is a real inventory change, unlike the earlier identical-count metadata-churn symptom; logs do not identify the file or establish that no other files changed. The cause must not be guessed or filtered away without inspection.
+- Windows build restore still spent 88.78s in archive work, versus 8.92s transfer. Modules used 21.16s staging and 36.84s merge; build objects used 13.67s staging and 16.99s merge. Cached preflight took only 0.11s in total. Since every file linked successfully, the next Windows target is per-file staging/publication/metadata work, not an unobserved copy fallback or more download workers. Antivirus/volume effects are hypotheses until separately measured.
+- Go cache transfers totalled 3,836,918,808 bytes restored and 2,704,294,728 bytes saved; saved modules account for 1,187,781,554 bytes and build archives 1,516,513,174. Module skip improvements have not yet reduced total uploads materially because those three trees acquired an additional file.
+
+### Next experiment order
+
+1. Repeat the same consumer SHA, preview SHA and settings unchanged once. This tests whether the extra 151-byte file is one-time cache convergence and whether the three module uploads then skip. It also gives another observation of noisy Windows setup/test durations. If inventory changes persist, capture relative path, size and hash differences before/after the workload; current aggregate reports cannot name the file.
+2. Test `cache-storage: chunked` at the same workload revision with default chunk concurrency 4 and `cache-strict: true`. Its namespace is separate, so the first run seeds chunks and a second unchanged run tests warm reuse. Compare the second run against warm archive storage, counting complete restore/workload/post time, transferred/reused bytes, chunk requests and failures. Prioritize lint and Windows build if the consumer workflow can select jobs. Chunking targets repeated uploads, but still packs/stages the full tree and adds control requests; it is not a proven fix for Windows publication time.
+3. A compression experiment (`cache-compression: none`) is a separate seed/warm pair, not a simultaneous change to chunk storage. It can reduce compression CPU while expanding transferred bytes and temporary disk. Lint packing is a concrete target, but Windows file-count overhead may dominate regardless.
+
+Next local implementation candidates are finer bounded module change diagnostics, measured reduction/concurrency of Windows file publication and packing/compression work. Retain full validation, no-overwrite publication, preserved modes/mtimes and worker cancellation/join. Do not blindly exclude the unidentified module file, assume higher concurrency is faster, or change several experimental dimensions together. Further dispatches remain for the user to authorize or execute.
+
+## Unchanged repeat: module caches converged
+
+User-supplied run [42867214965](https://github.com/nicoheidtke/exasol-personal/actions/runs/42867214965) repeated consumer `76322ee01b0481d7bffd98d45abb89d2674f2a76`, preview `e6e119a8b0b524a6ac1606d660c48603c11753df` and the same default split/gzip archive settings. All jobs succeeded (SonarQube skipped); no cache warnings/errors or Go module downloads appeared. All four populated module snapshots reported `unchanged-module-content` and zero uploaded bytes; launcher module trees remained empty and skipped. The extra 151-byte inventory addition did not recur in this repeat. Its filename/cause remains unidentified, but it is no longer evidence of ongoing module re-upload churn at this unchanged revision.
+
+| Job | Previous post-save | Repeat post-save | Module content check |
+| --- | ---: | ---: | ---: |
+| lint-go | 27.5s | 22.4s | 3.85s |
+| build Linux | 20.5s | 13.9s | 1.10s |
+| build Windows | 30.0s | 17.9s | 4.31s |
+| tests-unit | 20.8s | 18.8s | 1.75s |
+
+Go cache uploads totalled 1,517,307,593 bytes, all build snapshots, versus 2,704,294,728 bytes previously. Avoided module uploads account for 1,187,781,554 bytes; small build-snapshot differences account for the remaining net delta. Restored bytes were 3,838,727,124. Unit tests again had 28 cached package-result lines. All restored published files used hardlinks.
+
+Timing remains noisy: six-Go-job span was 515.4s (8m35s), versus 469.3s (7m49s) previously; aggregate job elapsed was 731.6s versus 701.7s. Windows launcher pytest increased from 89.13s to 140.22s. Lint restore increased 51.4→68.0s, with module transfer increasing 10.7→27.1s; Windows build restore increased 97.9→109.3s, predominantly archive processing. Reduced upload bytes therefore must not be advertised as a whole-pipeline speedup.
+
+The unchanged-repeat diagnostic is complete. The next storage experiment is the separate chunked seed/warm pair described above, preserving consumer revision, preview SHA, gzip and worker defaults, with strict errors for correctness. Its first run is cold because storage namespaces differ; compare the second against this steady archive baseline. The main remaining upload target is 1.52GB of fresh complete build archives, while Windows per-file restore work remains a separate implementation target. No workflow was dispatched during inspection, and no code/publication changes were made.

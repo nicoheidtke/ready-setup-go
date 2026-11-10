@@ -17,3 +17,8 @@ test('passes independent download controls', () => {
   const call = invocation({ INPUT_HELPER: '/helper', 'INPUT_DOWNLOAD-CONCURRENCY': '1', 'INPUT_DOWNLOAD-CHUNK-BYTES': '1048576' });
   assert.deepEqual(call.args, ['--download-concurrency', '1', '--download-chunk-bytes', '1048576']);
 });
+
+test('passes independent compression and publication controls', () => {
+  const call = invocation({ INPUT_HELPER: '/helper', 'INPUT_COMPRESSION-CONCURRENCY': '2', 'INPUT_RESTORE-CONCURRENCY': '1' });
+  assert.deepEqual(call.args, ['--compression-concurrency', '2', '--restore-concurrency', '1']);
+});

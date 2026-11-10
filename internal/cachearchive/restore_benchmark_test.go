@@ -12,6 +12,24 @@ import (
 // BenchmarkRestoreModuleTree includes validated staging, publication and cleanup.
 // It is a synthetic local filesystem fixture, not a hosted workload benchmark.
 func BenchmarkRestoreModuleTree(b *testing.B) {
+	base, data := restoreModuleFixture(b)
+	b.SetBytes(int64(len(data)))
+	b.ResetTimer()
+	for i := range b.N {
+		dest := filepath.Join(base, fmt.Sprintf("dest-%d", i))
+		if _, err := Restore(context.Background(), bytes.NewReader(data), []Root{{"modules", dest}}, Options{}); err != nil {
+			b.Fatal(err)
+		}
+		b.StopTimer()
+		if err := os.RemoveAll(dest); err != nil {
+			b.Fatal(err)
+		}
+		b.StartTimer()
+	}
+}
+
+func restoreModuleFixture(b *testing.B) (string, []byte) {
+	b.Helper()
 	base := b.TempDir()
 	source := filepath.Join(base, "source")
 	for i := range 512 {
@@ -27,17 +45,34 @@ func BenchmarkRestoreModuleTree(b *testing.B) {
 	if _, err := Pack(context.Background(), &data, []Root{{"modules", source}}, Options{}); err != nil {
 		b.Fatal(err)
 	}
-	b.SetBytes(int64(data.Len()))
-	b.ResetTimer()
-	for i := range b.N {
-		dest := filepath.Join(base, fmt.Sprintf("dest-%d", i))
-		if _, err := Restore(context.Background(), bytes.NewReader(data.Bytes()), []Root{{"modules", dest}}, Options{}); err != nil {
-			b.Fatal(err)
-		}
-		b.StopTimer()
-		if err := os.RemoveAll(dest); err != nil {
-			b.Fatal(err)
-		}
-		b.StartTimer()
+	return base, data.Bytes()
+}
+
+// Run this benchmark with worker=1/4 in alternating order for local paired
+// diagnosis. Report staging separately: only publication is parallelized.
+func BenchmarkRestorePublicationConcurrency(b *testing.B) {
+	base, data := restoreModuleFixture(b)
+	for _, workers := range []int{1, 4} {
+		b.Run(fmt.Sprintf("workers=%d", workers), func(b *testing.B) {
+			b.SetBytes(int64(len(data)))
+			var stageMS, mergeMS float64
+			b.ResetTimer()
+			for i := range b.N {
+				dest := filepath.Join(base, fmt.Sprintf("workers%d-dest%d", workers, i))
+				stats, err := Restore(context.Background(), bytes.NewReader(data), []Root{{"modules", dest}}, Options{RestoreConcurrency: workers})
+				if err != nil {
+					b.Fatal(err)
+				}
+				stageMS += stats.StageMS
+				mergeMS += stats.MergeMS
+				b.StopTimer()
+				if err := os.RemoveAll(dest); err != nil {
+					b.Fatal(err)
+				}
+				b.StartTimer()
+			}
+			b.ReportMetric(stageMS/float64(b.N), "stage-ms/op")
+			b.ReportMetric(mergeMS/float64(b.N), "merge-ms/op")
+		})
 	}
 }

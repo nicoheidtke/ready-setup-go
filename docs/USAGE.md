@@ -68,6 +68,8 @@ Go 1.x starting at 1.26 is supported. Prereleases, aliases such as `stable`, cus
 | `cache-overlap` | `true` | Prefetch cache data while the selected Go toolchain installs; merge after installation. |
 | `cache-layout` | `split` | `split` module/build archives or a `combined` archive. |
 | `cache-compression` | `gzip` | `gzip` or `none`. |
+| `cache-compression-concurrency` | `4` | Whole-archive gzip workers, 1 through 16. Chunked storage uses its own compression workers. |
+| `cache-restore-concurrency` | `4` | Validated-file publication workers, 1 through 16. Set 1 for sequential publication. |
 | `cache-dependency-path` | Automatic scan | Newline-separated workspace-relative files or directories. Directories recursively discover Go manifests. |
 | `cache-build-max-age` | `0` | Optional build-object age filter, for example `120h`. Zero disables it; modules are never age-filtered. |
 | `cache-max-bytes` | `10737418240` | Per-archive limit for expanded tar and transferred archive bytes; 1 through 10 GiB. Includes tar headers and padding. |

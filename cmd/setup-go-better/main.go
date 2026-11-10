@@ -54,6 +54,8 @@ func run() error {
 	maxAge := fs.String("cache-build-max-age", input("CACHE-BUILD-MAX-AGE", "0"), "optional archive-only age filter, e.g. 120h; 0 disables")
 	maxBytes := fs.String("cache-max-bytes", input("CACHE-MAX-BYTES", fmt.Sprint(c.MaxBytes)), "maximum archive payload bytes")
 	chunkWorkers := fs.String("cache-chunk-concurrency", input("CACHE-CHUNK-CONCURRENCY", fmt.Sprint(c.ChunkConcurrency)), "parallel chunk workers, 1..16")
+	compressionWorkers := fs.String("cache-compression-concurrency", input("CACHE-COMPRESSION-CONCURRENCY", fmt.Sprint(c.CompressionConcurrency)), "whole-archive gzip workers, 1..16")
+	restoreWorkers := fs.String("cache-restore-concurrency", input("CACHE-RESTORE-CONCURRENCY", fmt.Sprint(c.RestoreConcurrency)), "restored-file publication workers, 1..16")
 	workers := fs.String("cache-upload-concurrency", input("CACHE-UPLOAD-CONCURRENCY", fmt.Sprint(c.UploadConcurrency)), "parallel upload workers, 1..32")
 	chunk := fs.String("cache-upload-chunk-bytes", input("CACHE-UPLOAD-CHUNK-BYTES", fmt.Sprint(c.UploadChunkBytes)), "upload block size bytes")
 	downloadWorkers := fs.String("cache-download-concurrency", input("CACHE-DOWNLOAD-CONCURRENCY", fmt.Sprint(c.DownloadConcurrency)), "parallel archive download workers, 1..32; 1 uses a single GET")
@@ -82,6 +84,12 @@ func run() error {
 	}
 	if c.ChunkConcurrency, err = strconv.Atoi(*chunkWorkers); err != nil {
 		return fmt.Errorf("cache-chunk-concurrency: %w", err)
+	}
+	if c.CompressionConcurrency, err = strconv.Atoi(*compressionWorkers); err != nil {
+		return fmt.Errorf("cache-compression-concurrency: %w", err)
+	}
+	if c.RestoreConcurrency, err = strconv.Atoi(*restoreWorkers); err != nil {
+		return fmt.Errorf("cache-restore-concurrency: %w", err)
 	}
 	if c.UploadConcurrency, err = strconv.Atoi(*workers); err != nil {
 		return fmt.Errorf("cache-upload-concurrency: %w", err)

@@ -32,6 +32,23 @@ func TestDownloadConfigurationBounds(t *testing.T) {
 	}
 }
 
+func TestArchiveWorkerConfigurationBounds(t *testing.T) {
+	for _, field := range []string{"compression", "restore"} {
+		for _, workers := range []int{0, 1, 4, 16, 17} {
+			c := DefaultConfig()
+			if field == "compression" {
+				c.CompressionConcurrency = workers
+			} else {
+				c.RestoreConcurrency = workers
+			}
+			valid := workers >= 1 && workers <= 16
+			if err := c.Validate(); (err == nil) != valid {
+				t.Errorf("%s workers=%d: %v", field, workers, err)
+			}
+		}
+	}
+}
+
 func TestDependenciesMonorepoAndIgnoredOutputs(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()

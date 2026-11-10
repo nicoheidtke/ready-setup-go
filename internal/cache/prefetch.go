@@ -168,7 +168,7 @@ func (p *Prefetch) merge(ctx context.Context, s *State) (Report, error) {
 				compression = "none"
 			}
 			t := time.Now()
-			stats, err := cachearchive.Restore(ctx, f, s.Snapshots[i].Roots, cachearchive.Options{Compression: compression, MaxBytes: s.Config.MaxBytes, ContentIdentity: m.Kind == "modules"})
+			stats, err := cachearchive.Restore(ctx, f, s.Snapshots[i].Roots, cachearchive.Options{Compression: compression, RestoreConcurrency: s.Config.RestoreConcurrency, MaxBytes: s.Config.MaxBytes, ContentIdentity: m.Kind == "modules"})
 			m.ArchiveMS = ms(t)
 			m.ArchiveStageMS, m.ArchivePreflightMS = stats.StageMS, stats.PreflightMS
 			m.ArchiveMergeMS, m.ArchiveCleanupMS = stats.MergeMS, stats.CleanupMS

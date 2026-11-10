@@ -3,6 +3,7 @@ package cachearchive
 
 import (
 	"archive/tar"
+	"bufio"
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
@@ -22,6 +23,10 @@ import (
 type Root struct{ Name, Path string }
 type Options struct {
 	Compression string
+	// Worker settings are independent of storage/chunk transfer concurrency.
+	// Zero selects four workers; one retains sequential processing.
+	CompressionConcurrency int
+	RestoreConcurrency     int
 	// ContentIdentity computes a content/mode digest while validating modules.
 	// Build restores do not need this additional hashing work.
 	ContentIdentity bool
@@ -41,6 +46,15 @@ type Stats struct {
 }
 
 func options(o Options) (Options, error) {
+	if o.CompressionConcurrency == 0 {
+		o.CompressionConcurrency = 4
+	}
+	if o.RestoreConcurrency == 0 {
+		o.RestoreConcurrency = 4
+	}
+	if o.CompressionConcurrency < 1 || o.CompressionConcurrency > 16 || o.RestoreConcurrency < 1 || o.RestoreConcurrency > 16 {
+		return o, errors.New("archive worker concurrency must be 1..16")
+	}
 	if o.Compression == "" {
 		o.Compression = "none"
 	}
@@ -83,16 +97,29 @@ func Pack(ctx context.Context, w io.Writer, roots []Root, opts Options) (stats S
 	if err != nil {
 		return stats, err
 	}
-	var gz *gzip.Writer
+	var gz *parallelGzipWriter
+	var raw *bufio.Writer
 	if opts.Compression == "gzip" {
-		gz = gzip.NewWriter(w)
+		gz = newParallelGzipWriter(ctx, w, opts.CompressionConcurrency)
 		w = gz
+	} else {
+		// Coalesce tar headers, padding and small file writes in raw archives.
+		// Gzip already buffers its output in fixed members.
+		raw = bufio.NewWriterSize(w, 256*1024)
+		w = raw
 	}
 	tw := tar.NewWriter(&boundedWriter{ctx: ctx, w: w, left: opts.MaxBytes})
 	defer func() {
 		err = errors.Join(err, tw.Close())
 		if gz != nil {
 			err = errors.Join(err, gz.Close())
+		}
+		if raw != nil {
+			if cancelErr := ctx.Err(); cancelErr != nil {
+				err = errors.Join(err, cancelErr)
+			} else {
+				err = errors.Join(err, raw.Flush())
+			}
 		}
 	}()
 	for _, r := range ordered {
@@ -216,6 +243,20 @@ func Restore(ctx context.Context, r io.Reader, roots []Root, opts Options) (stat
 	started := time.Now()
 	stageFinished := false
 	stages := make(map[string]string)
+	// Staging is private and directories remain writable until validation ends.
+	// Remember successful preparations rather than checking the same parent for
+	// every file in a module. Failed preparations must never enter this set.
+	stageDirs := make(map[string]bool)
+	prepareStageDir := func(name string) error {
+		if stageDirs[name] {
+			return nil
+		}
+		if err := os.MkdirAll(name, 0700); err != nil {
+			return err
+		}
+		stageDirs[name] = true
+		return nil
+	}
 	defer func() {
 		cleanup := time.Now()
 		for _, stage := range stages {
@@ -303,9 +344,9 @@ func Restore(ctx context.Context, r io.Reader, roots []Root, opts Options) (stat
 		}
 		var contentDigest []byte
 		if h.Typeflag == tar.TypeDir {
-			err = os.MkdirAll(target, 0700)
+			err = prepareStageDir(target)
 		} else {
-			err = os.MkdirAll(filepath.Dir(target), 0700)
+			err = prepareStageDir(filepath.Dir(target))
 			if err == nil {
 				var f *os.File
 				f, err = os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
@@ -378,7 +419,7 @@ func Restore(ctx context.Context, r io.Reader, roots []Root, opts Options) (stat
 	}
 	stats.PreflightMS = elapsedMS(preflight)
 	publication := time.Now()
-	err = merge(ctx, stages, entries, byName, &stats)
+	err = merge(ctx, stages, entries, byName, opts.RestoreConcurrency, &stats)
 	stats.MergeMS = elapsedMS(publication)
 	return stats, err
 }
@@ -467,12 +508,12 @@ type directory struct {
 	mtime time.Time
 }
 
-func merge(ctx context.Context, stages map[string]string, entries []entry, roots map[string]Root, stats *Stats) (err error) {
+func merge(ctx context.Context, stages map[string]string, entries []entry, roots map[string]Root, workers int, stats *Stats) (err error) {
 	opened := make(map[string]*os.Root)
 	private := make(map[string]string)
 	ready := make(map[*os.Root]map[string]bool)
 	var modes []directory
-	copyBuffer := make([]byte, 32*1024)
+	var jobs []publicationJob
 	// Temporarily writable existing module directories always regain their modes,
 	// including after cancellation or failure.
 	defer func() {
@@ -490,7 +531,8 @@ func merge(ctx context.Context, stages map[string]string, entries []entry, roots
 			err = errors.Join(err, r.Close())
 		}
 	}()
-	for _, e := range entries {
+	for i := range entries {
+		e := &entries[i]
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -545,48 +587,22 @@ func merge(ctx context.Context, stages map[string]string, entries []entry, roots
 		if err := writableDirs(r, filepath.Dir(name), &modes, ready[r]); err != nil {
 			return err
 		}
+		// All directory creation and temporary mode changes finish before any
+		// workers start. Jobs contain metadata only, never file payload buffers.
+		job := publicationJob{root: r, name: name, hdr: &e.hdr}
 		if stage := private[parts[0]]; stage != "" {
-			source := filepath.Join(stage, "payload", name)
-			if linkErr := r.Link(source, name); linkErr == nil {
-				// Unlink writable staging before setting Windows read-only attributes.
-				if err := r.Remove(source); err != nil {
-					r.Remove(name)
-					return err
-				}
-				if err := r.Chmod(name, fs.FileMode(e.hdr.Mode)); err != nil {
-					r.Remove(name)
-					return err
-				}
-				if err := r.Chtimes(name, e.hdr.ModTime, e.hdr.ModTime); err != nil {
-					r.Chmod(name, 0600)
-					r.Remove(name)
-					return err
-				}
-				stats.PublishedFiles++
-				stats.LinkedFiles++
-				continue
-			} else if errors.Is(linkErr, os.ErrExist) {
-				info, err := r.Lstat(name)
-				if err != nil {
-					return err
-				}
-				if !info.Mode().IsRegular() {
-					return fmt.Errorf("unsafe destination %q", name)
-				}
-				continue
-			}
+			job.source, job.private = filepath.Join(stage, "payload", name), true
+		} else {
+			job.source = filepath.Join(stages[parts[0]], "payload", name)
 		}
-		openSource := func() (*os.File, error) {
-			if stage := private[parts[0]]; stage != "" {
-				return r.Open(filepath.Join(stage, "payload", name))
-			}
-			return os.Open(filepath.Join(stages[parts[0]], "payload", name))
-		}
-		if err := publishCopy(ctx, r, name, e.hdr, openSource, copyBuffer, stats); err != nil {
-			return err
-		}
+		jobs = append(jobs, job)
 	}
-	return nil
+	publication, publishErr := publishFiles(ctx, jobs, workers, publishFile)
+	stats.PublishedFiles += publication.PublishedFiles
+	stats.LinkedFiles += publication.LinkedFiles
+	stats.CopiedFiles += publication.CopiedFiles
+	stats.CopiedBytes += publication.CopiedBytes
+	return publishErr
 }
 
 // The fallback preserves atomic no-replace creation on filesystems where staged

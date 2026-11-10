@@ -206,7 +206,7 @@ func Save(ctx context.Context, b Backend, s State) (Report, error) {
 			}
 			defer os.Remove(f.Name())
 			defer f.Close()
-			opts := cachearchive.Options{Compression: s.Config.Compression, MaxBytes: s.Config.MaxBytes}
+			opts := cachearchive.Options{Compression: s.Config.Compression, CompressionConcurrency: s.Config.CompressionConcurrency, MaxBytes: s.Config.MaxBytes}
 			if s.Config.Storage == "chunked" {
 				opts.Compression = "none"
 			}

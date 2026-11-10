@@ -39,6 +39,12 @@ on:
       chunk-concurrency:
         description: Parallel chunk workers, 1 through 16
         default: '4'
+      compression-concurrency:
+        description: Whole-archive gzip workers, 1 through 16
+        default: '4'
+      restore-concurrency:
+        description: Validated-file publication workers, 1 through 16
+        default: '4'
       storage:
         type: choice
         description: Whole archive or content-defined chunked snapshots
@@ -160,6 +166,8 @@ jobs:
           mode: ${{ inputs.mode }}
           layout: ${{ inputs.layout }}
           chunk-concurrency: ${{ inputs.chunk-concurrency }}
+          compression-concurrency: ${{ inputs.compression-concurrency }}
+          restore-concurrency: ${{ inputs.restore-concurrency }}
           storage: ${{ inputs.storage }}
           compression: ${{ inputs.compression }}
           dependency: ${{ inputs.dependency }}

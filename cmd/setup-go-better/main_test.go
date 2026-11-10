@@ -31,6 +31,10 @@ func TestCacheInputErrorsPrecedeInstallation(t *testing.T) {
 		{"download block", "--cache-download-chunk-bytes=0", "chunk bytes"},
 		{"download block parse", "--cache-download-chunk-bytes=typo", "cache-download-chunk-bytes"},
 		{"chunk workers", "--cache-chunk-concurrency=17", "cache-chunk-concurrency"},
+		{"compression workers", "--cache-compression-concurrency=17", "cache-compression-concurrency"},
+		{"compression worker parse", "--cache-compression-concurrency=typo", "cache-compression-concurrency"},
+		{"restore workers", "--cache-restore-concurrency=0", "cache-restore-concurrency"},
+		{"restore worker parse", "--cache-restore-concurrency=typo", "cache-restore-concurrency"},
 		{"chunk worker parse", "--cache-chunk-concurrency=typo", "cache-chunk-concurrency"},
 		{"chunk", "--cache-upload-chunk-bytes=0", "chunk bytes"},
 	} {

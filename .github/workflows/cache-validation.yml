@@ -31,6 +31,12 @@ on:
       chunk-concurrency:
         description: Parallel chunk workers, 1 through 16
         default: '4'
+      compression-concurrency:
+        description: Whole-archive gzip workers, 1 through 16
+        default: '4'
+      restore-concurrency:
+        description: Validated-file publication workers, 1 through 16
+        default: '4'
       download-concurrency:
         description: Parallel whole-archive download workers, 1 through 32
         default: '4'
@@ -83,6 +89,8 @@ jobs:
           cache-scope: ${{ inputs.scope }}
           cache-layout: ${{ inputs.layout }}
           cache-chunk-concurrency: ${{ inputs.chunk-concurrency }}
+          cache-compression-concurrency: ${{ inputs.compression-concurrency }}
+          cache-restore-concurrency: ${{ inputs.restore-concurrency }}
           cache-download-concurrency: ${{ inputs.download-concurrency }}
           cache-download-chunk-bytes: ${{ inputs.download-chunk-bytes }}
           cache-storage: ${{ inputs.storage }}

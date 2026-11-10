@@ -109,6 +109,8 @@ func run() error {
 	flag.StringVar(&o.Config.Mode, "mode", "restore-save", "candidate mode: restore-save or restore; baseline is always off")
 	flag.StringVar(&o.Config.Layout, "layout", "split", "split or combined")
 	flag.IntVar(&o.Config.ChunkConcurrency, "chunk-concurrency", o.Config.ChunkConcurrency, "parallel chunk compression/transfer workers, 1..16")
+	flag.IntVar(&o.Config.CompressionConcurrency, "compression-concurrency", o.Config.CompressionConcurrency, "whole-archive gzip workers, 1..16")
+	flag.IntVar(&o.Config.RestoreConcurrency, "restore-concurrency", o.Config.RestoreConcurrency, "restored-file publication workers, 1..16")
 	flag.StringVar(&o.Config.Storage, "storage", "archive", "archive or chunked")
 	flag.StringVar(&o.Config.Compression, "compression", "gzip", "gzip or none")
 	flag.Int64Var(&o.Config.MaxBytes, "max-bytes", o.Config.MaxBytes, "uncompressed archive and transferred archive byte limit")
