@@ -18,6 +18,8 @@ For native-only diagnostics, pass the same `--platform windows/amd64` (or anothe
 
 Checksum verification detects corruption and packaging mismatches relative to the supplied manifest. An attacker who can replace both files and their manifest can pass it; authenticate the manifest/release separately. The verifier deliberately makes no claim that an executable was produced from its stated source. Rebuilding from the reviewed source and comparing bytes supplies that evidence.
 
+The packaged `.gitattributes` disables text conversion so Git checkout preserves every checksummed file, including when a consumer enables `core.autocrlf`. Preserve that file in the distribution commit. Verify the committed blobs against the packaged bytes before pushing; publication must not normalize line endings after checksums and ZIPs are produced.
+
 ## Hosted preparation and attestations
 
 The existing **Prepare action distribution** workflow remains `workflow_dispatch` only. It requires a clean checkout, runs tests/vet, builds twice, compares both trees and verifies all assets. Its default only uploads preparation artifacts. The optional `attest` input adds a separate job with `id-token: write` and `attestations: write`; ordinary preparation retains `contents: read`. The signing job downloads only the artifact produced by the successful package job in the same run, rechecks the checksums, and uses pinned [`actions/attest`](https://github.com/actions/attest/tree/508db95dd578ae2727ebd6217d5ba78e4fbda05d) to create build provenance for all nine files, including the checksum manifest. It uploads the returned signature bundle separately. It does not create a release, tag, distribution commit or stable alias.

@@ -2,6 +2,8 @@
 
 ## Ecosystem prerelease preparation (2026-11-11)
 
+Publication checks caught Git line-ending conversion changing packaged text during staging. Release packaging now emits `.gitattributes` disabling text conversion; the verifier requires it, and a real Git checkout regression checks LF and CRLF payloads with `core.autocrlf=true`. Distribution blobs are compared byte for byte with the verified package before pushing. This packaging-only correction preserves the already-tested runtime binaries and prevents full-file checksum failures in consumer checkouts.
+
 The user explicitly authorized committing, pushing and publishing the completed presentation/ecosystem tranche as dated prerelease `v0.0.0-preview.20261111`. The previously validated dirty-source candidate is implementation evidence, not the release distribution: release preparation rebuilds twice from the exact clean committed source, verifies all files/assets and Unix ZIP modes, and rechecks the real native Windows archive/chunked lifecycle. Final publication provenance is recorded after remote refs and uploaded asset digests have been verified. No hosted workflow execution, automatic-trigger or repository-setting change is authorized or implied; hosted presentation/platform/policy checks and attestations remain pending.
 
 ## Current source and final validation boundary (2026-11-11)

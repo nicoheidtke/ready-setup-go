@@ -78,6 +78,9 @@ func run() error {
 			return err
 		}
 	}
+	if err := os.WriteFile(filepath.Join(*out, ".gitattributes"), []byte(distribution.CheckoutAttributes), 0644); err != nil {
+		return err
+	}
 	current, err := distribution.Source(".", platforms, *clean)
 	if err != nil {
 		return err

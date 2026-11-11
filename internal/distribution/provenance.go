@@ -17,6 +17,10 @@ import (
 
 var Platforms = []string{"linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64", "windows/amd64", "windows/arm64"}
 
+// CheckoutAttributes preserves the exact checksummed release bytes even when a
+// consumer checks out the action with Git's automatic line-ending conversion.
+const CheckoutAttributes = "* -text\n"
+
 type Provenance struct {
 	Revision     string   `json:"revision"`
 	Dirty        bool     `json:"dirty"`

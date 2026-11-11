@@ -79,6 +79,10 @@ func Verify(root, archives string, allowDirty bool, platform string) error {
 	if err != nil {
 		return err
 	}
+	attributes, err := os.ReadFile(filepath.Join(root, ".gitattributes"))
+	if err != nil || string(attributes) != CheckoutAttributes {
+		return fmt.Errorf("distribution must preserve exact bytes during Git checkout")
+	}
 	data, err := os.ReadFile(filepath.Join(root, "SOURCE_PROVENANCE.json"))
 	if err != nil {
 		return err
