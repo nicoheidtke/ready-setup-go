@@ -8,8 +8,8 @@ Start with [CONTRIBUTING.md](../CONTRIBUTING.md) for prerequisites, checks, and 
 | --- | --- |
 | `cmd/setup-go-better` | Native setup and post-job entrypoints |
 | `internal/installer` | Version selection, discovery, verified download/extraction, and installation |
-| `internal/cache` | Inputs, identity, restore/save policy, private post state, and reports |
-| `internal/cachearchive` | Deterministic tar/gzip, staging, and additive publication |
+| `internal/cache` | Inputs/configuration; separate state/identity, backend policy, transfer, lifecycle, and report files |
+| `internal/cachearchive` | Shared archive types/options; separate packing, restore/staging, merge, path-safety, and bounded-I/O files |
 | `internal/cachebackend` | Cache-v2 and signed blob transfers; see [protocol](../internal/cachebackend/PROTOCOL.md) |
 | `internal/actionenv`, `internal/actionlog`, `internal/httpretry` | Runner protocols, presentation, and replay-safe retries |
 | `internal/distribution`, `internal/release` | Provenance, integrity, and publication |
@@ -20,7 +20,7 @@ Start with [CONTRIBUTING.md](../CONTRIBUTING.md) for prerequisites, checks, and 
 | `experimental/` | Node alias and installer-only Bash comparison |
 | `testdata/`, `.github/` | Workloads, fixtures, and manual workflows |
 
-Runtime Go code uses the standard library. Consumers use bundled executables without building the action or installing npm packages. Source-only revisions cannot run as actions.
+Runtime Go code uses the standard library plus the pinned `github.com/klauspost/compress/zstd` codec. Consumers use bundled executables without building the action, installing npm packages, or installing compression tools. Source-only revisions cannot run as actions.
 
 ## Maintained interfaces
 
@@ -48,6 +48,7 @@ go run ./cmd/package --platform windows/amd64 --out .cache/native-dist
 | `SETUP_GO_BETTER_TEST_RUNNER_TEMP` | Parent of `setup-go-better/toolchains/<version>/<os>-<arch>/bin/go[.exe]` |
 | `SETUP_GO_BETTER_TEST_VERSION` | Installed exact version; default `1.26.4` |
 | `SETUP_GO_BETTER_TEST_STORAGE` | Run once with `archive`, once with `chunked` |
+| `SETUP_GO_BETTER_TEST_COMPRESSION` | `gzip` (default), `zstd`, or `none`; repeat for the codecs affected by a change |
 | `SETUP_GO_BETTER_TEST_NODE` | Node 24 executable; default `node` |
 | `SETUP_GO_BETTER_TEST_BASH` | Optional Bash executable for installer-only reuse |
 

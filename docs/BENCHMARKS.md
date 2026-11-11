@@ -55,6 +55,6 @@ Save retains a packed archive; restore retains input and staged payload. Chunkin
 
 Alternate sequential/parallel settings on identical corpora. Measure complete restore and full packing alongside isolated merge/compression. Fixed 4 MiB gzip members produce identical bytes across worker counts, but differ from a single-member baseline; record encoded size. Uncompressed buffering preserves bytes; fewer writes alone prove no elapsed improvement.
 
-Compare archive/chunked and split/combined with explicit compression, concurrency, block sizes, and filtering. Chunking still packs the tree and adds requests, manifests, buffers, and eviction risks. Include these costs and separate cold seed from warm repeat.
+Compare archive/chunked and split/combined with explicit compression, concurrency, block sizes, and filtering. Include gzip, zstd, and none on identical corpora; record the pinned codec version, executable/acquisition size, and peak memory alongside encoded size and complete workflow time. Chunking still packs the tree and adds requests, manifests, buffers, and eviction risks. Include these costs and separate cold seed from warm repeat.
 
 Ordinary artifacts precede post hooks and cannot collect later save JSON; use debug logs or completed-log collection. Restore-only artifacts are not full lifecycle evidence. GitHub's **Set up job** combines acquisition with other work and cannot be attributed to one action.

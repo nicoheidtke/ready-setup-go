@@ -51,6 +51,15 @@ func TestPackagedLifecycle(t *testing.T) {
 	if storage == "" {
 		storage = "archive"
 	}
+	compression := os.Getenv("SETUP_GO_BETTER_TEST_COMPRESSION")
+	if compression == "" {
+		compression = "gzip"
+	}
+	config := DefaultConfig()
+	config.Storage, config.Compression = storage, compression
+	if err := config.Validate(); err != nil {
+		t.Fatal(err)
+	}
 	toolchain := filepath.Join(runnerTemp, "setup-go-better", "toolchains", version, runtime.GOOS+"-"+runtime.GOARCH)
 	goName := "go"
 	if runtime.GOOS == "windows" {
@@ -168,7 +177,7 @@ func TestPackagedLifecycle(t *testing.T) {
 		env := map[string]string{
 			"GITHUB_ACTIONS": "true", "RUNNER_DEBUG": "1", "NO_COLOR": "1", "INPUT_SUMMARY": "true",
 			"RUNNER_TEMP": runnerTemp, "RUNNER_TOOL_CACHE": "", "GITHUB_WORKSPACE": workspace, "GITHUB_REPOSITORY": "test/local", "GITHUB_WORKFLOW_REF": "test/local/.github/workflows/packaged.yml@refs/heads/main", "GITHUB_JOB": "packaged-smoke", "GITHUB_ACTION": fmt.Sprintf("packaged_smoke_%d", iteration), "GITHUB_RUN_ID": "local", "GITHUB_RUN_ATTEMPT": "1",
-			"INPUT_GO-VERSION": version, "INPUT_CHECK-LATEST": "false", "INPUT_CACHE": "restore-save", "INPUT_CACHE-LAYOUT": "combined", "INPUT_CACHE-COMPRESSION": "gzip", "INPUT_CACHE-STRICT": "true", "INPUT_CACHE-SCOPE": "local-packaged-smoke", "INPUT_CACHE-DEPENDENCY-PATH": ".", "INPUT_CACHE-REPORT": filepath.Join(root, "cache-report.json"),
+			"INPUT_GO-VERSION": version, "INPUT_CHECK-LATEST": "false", "INPUT_CACHE": "restore-save", "INPUT_CACHE-LAYOUT": "combined", "INPUT_CACHE-COMPRESSION": compression, "INPUT_CACHE-STRICT": "true", "INPUT_CACHE-SCOPE": "local-packaged-smoke", "INPUT_CACHE-DEPENDENCY-PATH": ".", "INPUT_CACHE-REPORT": filepath.Join(root, "cache-report.json"),
 			"INPUT_CACHE-UPLOAD-CHUNK-BYTES":   "4194304000",
 			"INPUT_CACHE-DOWNLOAD-CONCURRENCY": "4",
 			"INPUT_CACHE-DOWNLOAD-CHUNK-BYTES": "1048576",

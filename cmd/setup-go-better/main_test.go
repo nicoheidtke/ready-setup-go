@@ -159,3 +159,20 @@ func TestVersionFileInputErrorsPrecedeInstallation(t *testing.T) {
 		t.Fatalf("explicit selector did not take precedence: %v", err)
 	}
 }
+
+func TestZstdCLIAndActionInputAcceptedBeforeVersionResolution(t *testing.T) {
+	for _, source := range []string{"flag", "action input"} {
+		t.Run(source, func(t *testing.T) {
+			t.Setenv("INPUT_CACHE-COMPRESSION", "")
+			args := []string{"setup", "--go-version=invalid", "--cache=off"}
+			if source == "flag" {
+				args = append(args, "--cache-compression=zstd")
+			} else {
+				t.Setenv("INPUT_CACHE-COMPRESSION", "zstd")
+			}
+			if err := runArgs(t, args...); err == nil || !strings.Contains(err.Error(), "invalid Go version") {
+				t.Fatalf("zstd input rejected before version resolution: %v", err)
+			}
+		})
+	}
+}

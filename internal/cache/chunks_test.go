@@ -18,7 +18,7 @@ import (
 )
 
 func TestChunkedReuseRestoreEvictionAndCorruption(t *testing.T) {
-	for _, compression := range []string{"none", "gzip"} {
+	for _, compression := range []string{"none", "gzip", "zstd"} {
 		t.Run(compression, func(t *testing.T) {
 			ctx := context.Background()
 			c := DefaultConfig()

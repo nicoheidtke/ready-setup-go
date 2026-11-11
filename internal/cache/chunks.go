@@ -13,7 +13,10 @@ import (
 	"strings"
 	"sync"
 
+	"setup-go-better/internal/cachearchive"
 	"setup-go-better/internal/cachebackend"
+
+	"github.com/klauspost/compress/zstd"
 )
 
 const chunkFormat = "sgb-chunks-v1"
@@ -81,7 +84,7 @@ func chunkWorkers(c Config) int {
 	return c.ChunkConcurrency
 }
 
-func chunkPipeline(parent context.Context, workers int, produce func(context.Context, func(chunkTask) error) error, process func(context.Context, chunkTask) error) error {
+func chunkPipeline(parent context.Context, workers int, produce func(context.Context, func(chunkTask) error) error, process func(context.Context, int, chunkTask) error) error {
 	if workers < 1 || workers > 16 {
 		return errors.New("cache-chunk-concurrency must be 1..16")
 	}
@@ -96,7 +99,7 @@ func chunkPipeline(parent context.Context, workers int, produce func(context.Con
 			once.Do(func() { first = err; cancel() })
 		}
 	}
-	for range workers {
+	for worker := range workers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -104,7 +107,7 @@ func chunkPipeline(parent context.Context, workers int, produce func(context.Con
 				if ctx.Err() != nil {
 					return
 				}
-				if err := process(ctx, job); err != nil {
+				if err := process(ctx, worker, job); err != nil {
 					fail(err)
 					return
 				}
@@ -127,6 +130,59 @@ func chunkPipeline(parent context.Context, workers int, produce func(context.Con
 	return parent.Err()
 }
 
+// Each save worker owns its encoder and output until its upload returns. Reset
+// reuses bounded codec state and capacity without retaining previous payloads.
+type chunkEncoder struct {
+	out bytes.Buffer
+	gz  *gzip.Writer
+	zs  *zstd.Encoder
+}
+
+func (e *chunkEncoder) encode(compression string, raw []byte) ([]byte, error) {
+	if compression == "none" {
+		return raw, nil
+	}
+	e.out.Reset()
+	if compression == "zstd" {
+		if e.zs == nil {
+			var err error
+			e.zs, err = cachearchive.NewZstdWriter(&e.out, 1)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			e.zs.Reset(&e.out)
+		}
+		if _, err := e.zs.Write(raw); err != nil {
+			return nil, errors.Join(err, e.zs.Close())
+		}
+		if err := e.zs.Close(); err != nil {
+			return nil, err
+		}
+		return e.out.Bytes(), nil
+	}
+	if compression != "gzip" {
+		return nil, errors.New("unsupported chunk compression")
+	}
+	if e.gz == nil {
+		e.gz = gzip.NewWriter(&e.out)
+	} else {
+		e.gz.Reset(&e.out)
+	}
+	if _, err := e.gz.Write(raw); err != nil {
+		return nil, errors.Join(err, e.gz.Close())
+	}
+	if err := e.gz.Close(); err != nil {
+		return nil, err
+	}
+	return e.out.Bytes(), nil
+}
+
+type chunkSaveMetric struct {
+	Bytes, ReusedBytes int64
+	ReusedChunks       int
+}
+
 type chunkCommit struct {
 	done chan struct{}
 	err  error
@@ -138,7 +194,8 @@ type chunkCommit struct {
 func saveChunks(ctx context.Context, b Backend, s Snapshot, c Config, f *os.File, m *Metric) error {
 	b = chunkBackend(b)
 	refs := make([]chunkRef, maxChunks)
-	metrics := make([]Metric, maxChunks)
+	metrics := make([]chunkSaveMetric, maxChunks)
+	var encoders [16]chunkEncoder
 	manifest := chunkManifest{Format: chunkFormat}
 	var count int
 	var encodedTotal int64
@@ -172,18 +229,10 @@ func saveChunks(ctx context.Context, b Backend, s Snapshot, c Config, f *os.File
 			copy(buffer, buffer[end:buffered])
 			buffered -= end
 		}
-	}, func(ctx context.Context, job chunkTask) error {
-		encoded := job.raw
-		if c.Compression == "gzip" {
-			var out bytes.Buffer
-			gz := gzip.NewWriter(&out)
-			if _, err := gz.Write(job.raw); err != nil {
-				return err
-			}
-			if err := gz.Close(); err != nil {
-				return err
-			}
-			encoded = out.Bytes()
+	}, func(ctx context.Context, worker int, job chunkTask) error {
+		encoded, err := encoders[worker].encode(c.Compression, job.raw)
+		if err != nil {
+			return err
 		}
 		sum := sha256.Sum256(encoded)
 		ref := chunkRef{Hash: hex.EncodeToString(sum[:]), Size: int64(len(encoded)), Raw: int64(len(job.raw))}
@@ -214,7 +263,7 @@ func saveChunks(ctx context.Context, b Backend, s Snapshot, c Config, f *os.File
 			metric.ReusedBytes = ref.Size
 			return nil
 		}
-		err := func() error {
+		err = func() error {
 			key := chunkKey(s, ref.Hash)
 			entry, err := exactLookup(ctx, b, key, chunkVersion(s))
 			if err != nil {
@@ -347,7 +396,7 @@ func downloadChunks(ctx context.Context, b Backend, s Snapshot, c Config, entry 
 			}
 		}
 		return nil
-	}, func(ctx context.Context, job chunkTask) error {
+	}, func(ctx context.Context, _ int, job chunkTask) error {
 		g := groups[job.index]
 		ref := g.ref
 		metric := &metrics[job.index]
@@ -370,16 +419,26 @@ func downloadChunks(ctx context.Context, b Backend, s Snapshot, c Config, entry 
 		}
 		var reader io.Reader = bytes.NewReader(encoded.Bytes())
 		var gz *gzip.Reader
+		var zs *zstd.Decoder
 		if c.Compression == "gzip" {
 			gz, err = gzip.NewReader(reader)
 			if err != nil {
 				return err
 			}
 			reader = gz
+		} else if c.Compression == "zstd" {
+			zs, err = cachearchive.NewZstdReader(reader)
+			if err != nil {
+				return err
+			}
+			reader = zs
 		}
 		raw, err := io.ReadAll(io.LimitReader(reader, ref.Raw+1))
 		if gz != nil {
 			err = errors.Join(err, gz.Close())
+		}
+		if zs != nil {
+			zs.Close()
 		}
 		if err != nil {
 			return err

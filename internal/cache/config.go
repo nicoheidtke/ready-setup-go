@@ -72,8 +72,8 @@ func (c Config) Validate() error {
 	if c.Layout != "split" && c.Layout != "combined" {
 		return fmt.Errorf("cache-layout must be split or combined")
 	}
-	if c.Compression != "gzip" && c.Compression != "none" {
-		return fmt.Errorf("cache-compression must be gzip or none")
+	if c.Compression != "gzip" && c.Compression != "zstd" && c.Compression != "none" {
+		return fmt.Errorf("cache-compression must be gzip, zstd, or none")
 	}
 	if c.BuildMaxAge < 0 || c.MaxBytes <= 0 || c.MaxBytes > DefaultMaxBytes {
 		return fmt.Errorf("cache build age must be nonnegative and max bytes must be between 1 and %d", DefaultMaxBytes)

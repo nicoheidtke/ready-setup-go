@@ -92,7 +92,7 @@ func archive(t *testing.T, entries []fixture) []byte {
 	return b.Bytes()
 }
 func TestRoundTripDeterministicMerge(t *testing.T) {
-	for _, compression := range []string{"none", "gzip"} {
+	for _, compression := range []string{"none", "gzip", "zstd"} {
 		t.Run(compression, func(t *testing.T) {
 			source, dest := tempDir(t), tempDir(t)
 			mtime := time.Unix(1700000000, 123456700)

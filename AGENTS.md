@@ -17,7 +17,7 @@ See [architecture](docs/ARCHITECTURE.md) for design, [usage](docs/USAGE.md) for 
 ## Design constraints
 
 - Optimize complete workflow cost first, resource efficiency second, maintainability third. Use the [measurement methodology](docs/BENCHMARKS.md); local timings or reduced bytes alone do not establish a workflow speedup.
-- Keep runtime logic in Go with standard-library dependencies. Keep launcher glue small. Consumers run bundled executables without compiling the action or installing npm packages.
+- Keep runtime logic in Go, preferring standard-library dependencies. The pinned `github.com/klauspost/compress/zstd` implementation is the approved exception for zstd compression. Keep launcher glue small. Consumers run bundled executables without compiling the action or installing npm packages.
 - Preserve public inputs, outputs, defaults, cache identities/formats, and main/post compatibility unless the change deliberately defines a migration or breaking release.
 - Verify downloaded toolchains before publication. Validate complete restored archives in private staging, reject unsafe entries, and preserve existing usable local files.
 - Bound concurrency and retained buffers. Propagate cancellation, join workers before cleanup, and surface finalization errors before publishing success.

@@ -53,8 +53,8 @@ Go 1.x starting at 1.26 is supported. Prereleases, aliases such as `stable`, cus
 | `cache-storage` | `archive` | Whole `archive` or content-defined `chunked` snapshots on GitHub cache. |
 | `cache-overlap` | `true` | Prefetch cache data while the selected Go toolchain installs; merge after installation. |
 | `cache-layout` | `split` | `split` module/build archives or a `combined` archive. |
-| `cache-compression` | `gzip` | `gzip` or `none`. |
-| `cache-compression-concurrency` | `4` | Whole-archive gzip workers, 1 through 16. Chunked storage uses its own compression workers. |
+| `cache-compression` | `gzip` | `gzip`, `zstd`, or `none`. The codec is bundled; no runner compression tool is required. |
+| `cache-compression-concurrency` | `4` | Whole-archive compression workers, 1 through 16. Chunked storage uses its own compression workers. |
 | `cache-restore-concurrency` | `4` | Validated-file publication workers, 1 through 16. Set 1 for sequential publication. |
 | `cache-dependency-path` | Automatic scan | Newline-separated workspace-relative files or directories. Directories recursively discover Go manifests. |
 | `cache-build-max-age` | `0` | Optional build-object age filter, for example `120h`. Zero disables it; modules are never age-filtered. |
@@ -68,6 +68,8 @@ Go 1.x starting at 1.26 is supported. Prereleases, aliases such as `stable`, cus
 | `cache-report` | Empty | Optional restore JSON path. The post-job save report appends `.post.json`. |
 
 ## Cache behavior
+
+Zstd is available in source revisions containing its codec and requires a newly packaged distribution; the preview pinned in the examples above predates this option. Set `cache-compression: zstd` with either archive or chunked storage when using a distribution that supports it. Gzip remains the default. Compression choices use separate cache identities, so switching codecs starts with a cold cache. The bundled codec needs no `zstd` or `tar` executable on the runner.
 
 For transfer pipelines, chunk layout, worker memory and staging details, see [architecture and resource behavior](ARCHITECTURE.md).
 

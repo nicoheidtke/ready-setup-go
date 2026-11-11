@@ -6,7 +6,7 @@ Discuss substantial changes to public inputs, defaults, or cache compatibility b
 
 ## Get started
 
-Install Git, Go 1.26 or newer, and Node 24, then clone the repository and enter its root directory. Release builds use Go 1.27.1. Runtime code uses the Go standard library and dependency-free launcher files; no npm installation is needed.
+Install Git, Go 1.26 or newer, and Node 24, then clone the repository and enter its root directory. Release builds use Go 1.27.1. Runtime code uses the Go standard library plus the pinned `github.com/klauspost/compress/zstd` codec, with dependency-free launcher files; no npm installation is needed. Dependency upgrades must preserve decoder resource limits and review chunk identity changes; refresh `THIRD_PARTY_NOTICES.txt` when upstream license notices change.
 
 Run the canonical local checks:
 

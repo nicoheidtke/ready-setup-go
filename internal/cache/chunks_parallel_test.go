@@ -2,7 +2,10 @@ package cache
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -356,5 +359,156 @@ func TestChunkConcurrencyInputBounds(t *testing.T) {
 		if err := c.Validate(); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// Resetting an encoder must retain the original chunk bytes: chunk identities
+// hash compressed data, so even a valid gzip stream with different headers or
+// compression state would silently lose reuse with existing snapshots.
+func TestChunkEncoderResetPreservesEncodedIdentity(t *testing.T) {
+	var encoder chunkEncoder
+	for _, raw := range [][]byte{
+		bytes.Repeat([]byte("module sources"), 10000),
+		chunkPayload()[:chunkMaximum],
+		{},
+		bytes.Repeat([]byte("module sources"), 10000),
+	} {
+		var want bytes.Buffer
+		gz := gzip.NewWriter(&want)
+		if _, err := gz.Write(raw); err != nil {
+			t.Fatal(err)
+		}
+		if err := gz.Close(); err != nil {
+			t.Fatal(err)
+		}
+		got, err := encoder.encode("gzip", raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, want.Bytes()) {
+			t.Fatal("encoder reuse changed gzip bytes and chunk identity")
+		}
+	}
+}
+
+func TestChunkSavePreservesLegacyManifestAcrossWorkers(t *testing.T) {
+	// Repeated maximum-size chunks exercise duplicate accounting; a short tail
+	// forces encoder reuse with a different length when only one worker runs.
+	payload := append(make([]byte, 2*chunkMaximum), []byte("tail")...)
+	var want chunkManifest
+	want.Format, want.Size = chunkFormat, int64(len(payload))
+	for offset := 0; offset < len(payload); {
+		end := offset + chunkEnd(payload[offset:min(len(payload), offset+chunkMaximum)])
+		raw := payload[offset:end]
+		var encoded bytes.Buffer
+		gz := gzip.NewWriter(&encoded)
+		if _, err := gz.Write(raw); err != nil {
+			t.Fatal(err)
+		}
+		if err := gz.Close(); err != nil {
+			t.Fatal(err)
+		}
+		sum := sha256.Sum256(encoded.Bytes())
+		want.Chunks = append(want.Chunks, chunkRef{Hash: hex.EncodeToString(sum[:]), Size: int64(encoded.Len()), Raw: int64(len(raw))})
+		offset = end
+	}
+	wantJSON, err := json.Marshal(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, workers := range []int{1, 4} {
+		c := DefaultConfig()
+		c.Storage, c.Compression, c.ChunkConcurrency = "chunked", "gzip", workers
+		snap := state(t, c, "deps", roots(t)).Snapshots[0]
+		b := &memoryBackend{}
+		var m Metric
+		if err := saveChunks(context.Background(), b, snap, c, chunkTestFile(t, payload), &m); err != nil {
+			t.Fatal(err)
+		}
+		gotJSON := b.entries[len(b.entries)-1].data
+		if !bytes.Equal(gotJSON, wantJSON) {
+			t.Fatalf("workers=%d changed manifest bytes", workers)
+		}
+		if b.uploads != 3 || b.lookups != 2 || m.ReusedChunks != 1 || m.ReusedBytes != want.Chunks[0].Size {
+			t.Fatalf("workers=%d changed duplicate accounting: uploads=%d lookups=%d metric=%+v", workers, b.uploads, b.lookups, m)
+		}
+	}
+}
+
+func TestZstdChunkSaveIdentitiesAndReuseAcrossWorkers(t *testing.T) {
+	payload := append(make([]byte, 2*chunkMaximum), []byte("tail")...)
+	var firstManifest []byte
+	for _, workers := range []int{1, 4} {
+		c := DefaultConfig()
+		c.Storage, c.Compression, c.ChunkConcurrency = "chunked", "zstd", workers
+		snap := state(t, c, "deps", roots(t)).Snapshots[0]
+		b := &memoryBackend{}
+		var m Metric
+		if err := saveChunks(context.Background(), b, snap, c, chunkTestFile(t, payload), &m); err != nil {
+			t.Fatal(err)
+		}
+		manifest := b.entries[len(b.entries)-1].data
+		if firstManifest == nil {
+			firstManifest = append([]byte(nil), manifest...)
+		} else if !bytes.Equal(manifest, firstManifest) {
+			t.Fatal("zstd chunk identities depend on worker scheduling")
+		}
+		if b.uploads != 3 || b.lookups != 2 || m.ReusedChunks != 1 {
+			t.Fatalf("duplicate chunk not reused: uploads=%d lookups=%d metric=%+v", b.uploads, b.lookups, m)
+		}
+		out := chunkTestFile(t, nil)
+		if err := downloadChunks(context.Background(), b, snap, c, cachebackend.Entry{Key: snap.Key}, out, &Metric{}); err != nil {
+			t.Fatal(err)
+		}
+		got, err := os.ReadFile(out.Name())
+		if err != nil || !bytes.Equal(got, payload) {
+			t.Fatal("zstd chunk roundtrip differs", err)
+		}
+	}
+}
+
+func TestZstdChunkRejectsMalformedAndExpandedBounds(t *testing.T) {
+	for _, mutation := range []string{"truncated", "checksum", "expanded-size"} {
+		t.Run(mutation, func(t *testing.T) {
+			c := DefaultConfig()
+			c.Storage, c.Compression = "chunked", "zstd"
+			snap := state(t, c, "deps", roots(t)).Snapshots[0]
+			b := &memoryBackend{}
+			payload := bytes.Repeat([]byte("module sources"), 1000)
+			if err := saveChunks(context.Background(), b, snap, c, chunkTestFile(t, payload), &Metric{}); err != nil {
+				t.Fatal(err)
+			}
+			var manifest chunkManifest
+			if err := json.Unmarshal(b.entries[1].data, &manifest); err != nil {
+				t.Fatal(err)
+			}
+			switch mutation {
+			case "truncated":
+				b.entries[0].data = b.entries[0].data[:len(b.entries[0].data)-1]
+			case "checksum":
+				b.entries[0].data[len(b.entries[0].data)-1] ^= 1
+			case "expanded-size":
+				manifest.Chunks[0].Raw--
+				manifest.Size--
+			}
+			// Update transport identities so malformed streams must be rejected
+			// by the codec/output bound, not merely by the encoded SHA-256 check.
+			sum := sha256.Sum256(b.entries[0].data)
+			manifest.Chunks[0].Hash = hex.EncodeToString(sum[:])
+			manifest.Chunks[0].Size = int64(len(b.entries[0].data))
+			b.entries[0].key = chunkKey(snap, manifest.Chunks[0].Hash)
+			data, err := json.Marshal(manifest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			b.entries[1].data = data
+			out := chunkTestFile(t, nil)
+			if err := downloadChunks(context.Background(), b, snap, c, cachebackend.Entry{Key: snap.Key}, out, &Metric{}); err == nil {
+				t.Fatal("invalid zstd chunk accepted")
+			}
+			if info, err := out.Stat(); err != nil || info.Size() != 0 {
+				t.Fatal("invalid chunk published unvalidated expanded bytes", err)
+			}
+		})
 	}
 }

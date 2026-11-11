@@ -47,13 +47,13 @@ on:
       compression:
         type: choice
         description: Archive compression to validate
-        options: [gzip, none]
+        options: [gzip, zstd, none]
         default: gzip
       chunk-concurrency:
         description: Parallel chunk workers, 1 through 16
         default: '4'
       compression-concurrency:
-        description: Whole-archive gzip workers, 1 through 16
+        description: Whole-archive compression workers, 1 through 16
         default: '4'
       restore-concurrency:
         description: Validated-file publication workers, 1 through 16

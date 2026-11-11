@@ -3,10 +3,27 @@ package cache
 import (
 	"context"
 	"errors"
-	"strings"
 
+	"setup-go-better/internal/actionlog"
 	"setup-go-better/internal/cachebackend"
 )
+
+// ErrCredentialsUnavailable identifies missing runner cache credentials.
+var ErrCredentialsUnavailable = errors.New("runtime cache credentials unavailable; use the Node action on a cache-v2-capable GitHub runner")
+
+// ErrPostStateUnavailable identifies a runner without the automatic post bridge.
+var ErrPostStateUnavailable = errors.New("GITHUB_STATE unavailable; post-job save requires the Node action")
+
+func warning(err error) {
+	actionlog.Default.Warning("Go cache", err.Error()+" "+DiagnosticHint(err))
+}
+func failure(c Config, err error) error {
+	if c.Strict {
+		return err
+	}
+	warning(err)
+	return nil
+}
 
 // DiagnosticHint adds user guidance without replacing the original error or
 // weakening strict/non-strict policy. Ordinary misses never reach this path.
@@ -20,9 +37,9 @@ func DiagnosticHint(err error) string {
 		return "Check the runner's cache access policy; use cache: restore when writes are unavailable."
 	case errors.Is(err, cachebackend.ErrConflict):
 		return "Another writer may own this immutable entry; a conflict does not confirm a usable saved snapshot."
-	case strings.Contains(err.Error(), "credentials unavailable"):
+	case errors.Is(err, ErrCredentialsUnavailable):
 		return "Use the root Node action on a cache-v2-capable GitHub runner; do not supply runtime tokens manually."
-	case strings.Contains(err.Error(), "GITHUB_STATE"):
+	case errors.Is(err, ErrPostStateUnavailable):
 		return "Automatic post-save requires the root Node action; the Bash composite installs Go only."
 	default:
 		return "Check the operation details with GitHub step debug logging; cache: off disables caching."

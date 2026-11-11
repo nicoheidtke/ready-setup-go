@@ -132,7 +132,7 @@ func state(t *testing.T, c Config, dep string, rs []cachearchive.Root) State {
 }
 
 func TestSplitLifecycleFreshBuildAndUnchangedModules(t *testing.T) {
-	for _, compression := range []string{"none", "gzip"} {
+	for _, compression := range []string{"none", "gzip", "zstd"} {
 		t.Run(compression, func(t *testing.T) {
 			ctx := context.Background()
 			c := DefaultConfig()

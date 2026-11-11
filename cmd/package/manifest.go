@@ -14,7 +14,7 @@ var packagedFiles = []string{
 	"action.yml", "launch.sh", "launch.cjs", "post.cjs", "launcher.cjs",
 	"experimental/composite/action.yml", "experimental/node/action.yml",
 	"experimental/node/launch.cjs", "experimental/node/post.cjs",
-	"README.md", "LICENSE", "SECURITY.md", "docs/USAGE.md",
+	"README.md", "LICENSE", "THIRD_PARTY_NOTICES.txt", "SECURITY.md", "docs/USAGE.md",
 	"docs/ARCHITECTURE.md", "docs/COMPARISON.md", "docs/SECURITY_MODEL.md",
 	"internal/cachebackend/PROTOCOL.md",
 }

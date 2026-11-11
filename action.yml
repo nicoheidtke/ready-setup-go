@@ -32,10 +32,10 @@ inputs:
     description: Prefetch caches while the selected toolchain installs; merge after installation.
     default: 'true'
   cache-compression:
-    description: Archive compression, gzip or none.
+    description: Archive compression, gzip, zstd, or none.
     default: gzip
   cache-compression-concurrency:
-    description: Whole-archive gzip workers, 1 through 16. Chunked storage has its own workers.
+    description: Whole-archive compression workers, 1 through 16. Chunked storage has its own workers.
     default: '4'
   cache-restore-concurrency:
     description: Validated-file publication workers, 1 through 16. Set 1 for sequential publication.
