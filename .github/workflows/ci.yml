@@ -21,19 +21,14 @@ jobs:
         with:
           go-version: ${{ matrix.go }}
           cache: false
-      - run: go test ./...
-      - run: go vet ./...
       - name: Locate action's Node 24 runtime
         id: node-runtime
         uses: ./.github/actions/node-runtime
-      - name: Test dependency-free Node launcher on action runtime
+      - name: Run contributor checks on the action runtime
         shell: bash
         env:
           NODE24: ${{ steps.node-runtime.outputs.path }}
-        run: '"$NODE24" --test launcher.test.cjs .github/actions/cache-benchmark/run.test.cjs .github/actions/node-runtime/locate.test.cjs .github/scripts/cache-probe.test.cjs'
-      - name: Check Go formatting
-        shell: bash
-        run: test -z "$(gofmt -l cmd internal testdata/smoke testdata/packages)"
+        run: go run ./cmd/check --node "$NODE24"
   workflows:
     runs-on: ubuntu-24.04
     timeout-minutes: 10

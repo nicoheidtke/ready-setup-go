@@ -1,10 +1,10 @@
-# Release integrity and maintenance
+# Release procedures
 
-Distribution commits contain generated executables; source commits are not directly runnable actions. Keep the immutable source commit, distribution commit, release tag, compiler, artifact checksums and validation results together in [development status](DEVELOPMENT.md). A reproducible local build verifies byte consistency, not the identity or security of its publisher.
+Consumers need distribution commits containing generated executables; source commits are not runnable actions. Keep source/distribution revisions, compiler, checksums, and validation results with each release. [Development](DEVELOPMENT.md) records current support limits and published provenance.
 
-## Prepare and verify locally
+## Build and verify
 
-Use the pinned compiler recorded in development status and an output path ignored by Git. The packager records `SOURCE_REVISION` and `SOURCE_PROVENANCE.json`, then checks that source did not change while packaging:
+Run the [contribution checks](../CONTRIBUTING.md) and relevant [native lifecycle checks](DEVELOPMENT.md#validation). Commit the intended source, use the release compiler recorded in development, and keep the checkout unchanged through publication. Build twice into new or empty ignored directories. Packaging refuses nonempty output and asset directories, preventing stale files from entering a new distribution:
 
 ```text
 go run ./cmd/package --require-clean --out .cache/release/dist --archives .cache/release/artifacts
@@ -12,31 +12,19 @@ go run ./cmd/package --require-clean --out .cache/release/dist-repro --archives 
 go run ./cmd/verify-distribution --dist .cache/release/dist --archives .cache/release/artifacts
 ```
 
-Compare both output trees and asset directories byte for byte. `SHA256SUMS` inside the distribution covers every packaged regular file except itself; the asset manifest covers both ZIPs and all six standalone executables. The verifier requires the complete platform set by default, compares standalone binaries with their bundled counterparts, validates provenance/marker consistency, rejects unlisted or missing files, and checks every ZIP entry's bytes and portable executable mode. Directory executable modes are also checked on Unix; Windows directory metadata cannot establish Unix Git modes. Before publication, independently check the distribution commit's four Unix binary entries are Git mode `100755`. ZIP Unix binaries must be `0755`, other ZIP entries `0644`.
+Compare both distribution trees and asset directories byte for byte. The packager records `SOURCE_REVISION` and `SOURCE_PROVENANCE.json` and rejects source changes during packaging. The compiler record identifies the Go executable on `PATH`.
 
-For native-only diagnostics, pass the same `--platform windows/amd64` (or another supported target) to packaging and verification. Dirty builds require omission of `--require-clean` and explicit `--allow-dirty` during verification. They record `<HEAD>-dirty` in `SOURCE_REVISION`; never describe that marker as an exact source commit. The source digest is a SHA-256 over sorted nonignored working-tree file paths and contents (including untracked files and deletion markers), not a Git tree ID or signature. Ignored files and filesystem permissions are outside this content digest. The compiler record identifies the Go executable used from `PATH`; use the pinned toolchain, not an incidental system compiler. Keep outputs ignored or outside the source tree so packaging does not create new source inputs.
+`SHA256SUMS` covers every packaged regular file except itself. The asset manifest covers both ZIPs and six standalone executables. The verifier checks the complete platform set, provenance consistency, file coverage, standalone/bundled equality, and ZIP bytes/modes. Before pushing, verify committed blobs match packaged bytes and all four Unix binaries have Git mode `100755`. ZIP Unix binaries use `0755`; other files use `0644`. Windows filesystem modes cannot establish Unix Git modes.
 
-Checksum verification detects corruption and packaging mismatches relative to the supplied manifest. An attacker who can replace both files and their manifest can pass it; authenticate the manifest/release separately. The verifier deliberately makes no claim that an executable was produced from its stated source. Rebuilding from the reviewed source and comparing bytes supplies that evidence.
+Preserve the packaged `.gitattributes`: it prevents checkout text conversion from changing checksummed bytes. Do not normalize files after packaging.
 
-The packaged `.gitattributes` disables text conversion so Git checkout preserves every checksummed file, including when a consumer enables `core.autocrlf`. Preserve that file in the distribution commit. Verify the committed blobs against the packaged bytes before pushing; publication must not normalize line endings after checksums and ZIPs are produced.
+For native diagnostics, supply the same `--platform windows/amd64` (or other target) to packaging and verification. Dirty builds omit `--require-clean`, require verification's `--allow-dirty`, and record `<HEAD>-dirty`; they are not release candidates. The source digest covers sorted nonignored working-tree paths/content, including untracked files and deletion markers; it excludes ignored files and filesystem modes. Keep outputs ignored or outside the source tree. Bundles include runtime files and consumer documentation; links to development-only guides point to the source commit. In dirty diagnostic builds those links refer to the base commit, not uncommitted edits.
 
-## Hosted preparation and attestations
+Checksums detect corruption relative to a manifest, not publisher identity. An attacker replacing both can pass verification. Authenticate the release separately; rebuild reviewed source and compare bytes to establish reproducibility.
 
-The existing **Prepare action distribution** workflow remains `workflow_dispatch` only. It requires a clean checkout, runs tests/vet, builds twice, compares both trees and verifies all assets. Its default only uploads preparation artifacts. The optional `attest` input adds a separate job with `id-token: write` and `attestations: write`; ordinary preparation retains `contents: read`. The signing job downloads only the artifact produced by the successful package job in the same run, rechecks the checksums, and uses pinned [`actions/attest`](https://github.com/actions/attest/tree/508db95dd578ae2727ebd6217d5ba78e4fbda05d) to create build provenance for all nine files, including the checksum manifest. It uploads the returned signature bundle separately. It does not create a release, tag, distribution commit or stable alias.
+## Plan, prepare, and publish
 
-This is prepared workflow code, not evidence that an attestation has been issued. A future run needs explicit authorization. Current GitHub plans support attestations for public repositories; private/internal repositories require Enterprise Cloud support. Do not change repository visibility or silently omit failed signing to work around plan limits. See [GitHub's attestation prerequisites and verification](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations).
-
-After a supported authorized run, consumers can verify a downloaded artifact against this repository:
-
-```text
-gh attestation verify bundled.zip -R nicoheidtke/setup-go-better
-```
-
-Review the verified source revision, signer workflow and invocation against the release's recorded provenance, rather than accepting any attestation from the repository. Attestations bind bytes to a workflow identity; they do not establish correctness, performance or a safe workload. Keep the bundle with the release evidence; local preparation alone cannot mint GitHub-hosted provenance.
-
-## Publish versioned releases
-
-Use the tracked maintainer command instead of editing scripts in `.cache`. It is a prerelease publisher for this repository, with three explicit phases. First commit the intended source and use the pinned Go compiler to build the two copies above. Keep the checkout clean and do not edit source/docs between building and completing publication. If the preview branch is not available locally, run `git fetch origin codex/action-preview` before planning. Put reviewed release notes in an ignored file such as `.cache/release/notes.md`.
+The maintainer command publishes dated prereleases. If needed, fetch `codex/action-preview` before planning. Write reviewed notes to an ignored file, then run:
 
 ```text
 go run ./cmd/release plan --tag v0.0.0-preview.YYYYMMDD --notes .cache/release/notes.md
@@ -45,16 +33,37 @@ go run ./cmd/release publish
 go run ./cmd/release publish --execute
 ```
 
-Replace `YYYYMMDD` with the intended release date; an unused `.N` suffix permits another preview on that date. `plan` verifies both complete build copies, source/compiler provenance, checksums, ZIP modes, local branch identity and remote destinations. It writes `.cache/release/plan.json` containing the source, expected remote refs, file/asset digests and notes, without changing Git refs or GitHub data. Review this file. Its paths are absolute and belong to this checkout; keep it private if release notes contain unpublished details. Alternate `--root`, `--dist`, `--assets`, `--repro-dist`, `--repro-assets`, `--plan`, `--repository`, `--remote`, `--source-ref` and `--preview-ref` values are available. The supported remote URLs are plain HTTPS or `git@github.com:owner/name.git`; embedded credentials and multiple/different push destinations are refused.
+Replace `YYYYMMDD` with the release date; an unused `.N` suffix allows another preview that day. Use command help for alternate paths, repository, remote, and refs.
 
-`prepare` adds exact raw blobs through a private temporary index, preserves all four Unix executable modes, verifies the committed files, and creates an annotated **local** tag. It leaves the source checkout/index untouched. The distribution commit and tag object are saved in the plan; rerunning preparation reuses them. It does not push. `publish` without `--execute` performs a dry-run preflight and never retrieves credentials or calls GitHub write APIs. Only `publish --execute` performs external writes. Its GitHub API requests use `GITHUB_TOKEN`, `GH_TOKEN`, or the configured Git credential helper. Git push separately uses the named remote's configured Git/SSH authentication; an environment API token alone does not configure Git transport, and no token is placed in Git command arguments. The source/preview/tag push is atomic and uses exact ref leases. Source updates must be fast-forwards; preview commits must have the planned previous preview as their parent. It creates no workflow runs and changes no settings or stable aliases.
+| Phase | Effect |
+| --- | --- |
+| `plan` | Verifies both builds, provenance, checksums, modes, branch identity, and destinations; writes `.cache/release/plan.json` without changing refs or GitHub data |
+| `prepare` | Uses a temporary index to create exact-byte distribution objects and an annotated local tag, preserves Unix modes, verifies committed files, and saves object IDs in the plan; does not push or alter the source index |
+| `publish` | Dry-run preflight; retrieves no credentials and calls no GitHub write APIs |
+| `publish --execute` | Atomically pushes source/preview/tag with exact leases, uploads and verifies assets, and publishes the prerelease |
 
-After a successful push, the command discovers existing drafts through GitHub's authenticated, bounded release list. It creates a draft only when none matches the unused tag, resumes matching uploaded assets, verifies all nine server SHA-256 digests/sizes, then publishes as a prerelease without marking it latest. A final published-release fetch checks every asset again. No ambiguous create/upload/publish request is automatically retried. If interrupted or a response is lost, rerun **the same** `publish --execute` command with the saved plan: exact already-pushed refs and matching draft/published data are accepted without duplicate writes. Changed branch refs, different notes/assets/tags, incomplete/mismatched remote assets, duplicate releases and published-release modifications are refused for manual inspection. Do not delete/re-plan over an existing tag to bypass these checks. An error after publishing can mean publication succeeded but final verification or saving the report did not; inspect/resume rather than creating another release.
+Review the plan before publication. Its absolute paths belong to this checkout; protect unpublished notes. Preparation is repeatable with the same plan. Source updates must be fast-forwards; distribution commits retain the planned previous preview as parent. Remote URLs must be plain HTTPS or `git@github.com:owner/name.git`; embedded credentials and ambiguous push destinations are refused.
 
-The command verifies packaging and the two-build comparison; it does not run the test/lint/native lifecycle suite itself or replace the roadmap's release gates. Run and record those before planning. GitHub API behavior is exercised through local mock-server tests; the command does not generate a hosted attestation or enable release immutability. Publication notes and the saved plan are release evidence, not proof that hosted presentation or platform/policy gates passed.
+GitHub API authentication uses `GITHUB_TOKEN`, `GH_TOKEN`, or the configured Git credential helper. Git push separately uses the remote's configured Git/SSH authentication; an API environment token does not configure transport. Tokens are not placed in Git command arguments. Publication creates no workflow runs and changes no settings or stable aliases.
 
-Publication and repository-setting changes are separate authorized operations. Before using immutable releases, a maintainer must explicitly enable repository release immutability and verify the resulting release is marked immutable. A fixed Git SHA alone does not lock a GitHub release's tag/assets. GitHub recommends preparing a draft, attaching every asset, verifying sizes/digests and provenance, then publishing it. Immutability locks the release tag and assets and generates a release attestation; this differs from the build provenance attestation above. See [immutable releases](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases) and [enabling immutability](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/establish-provenance-and-integrity/prevent-release-changes).
+The publisher finds or creates a matching draft, resumes matching uploads, verifies all nine server SHA-256 digests/sizes, publishes without marking latest, and fetches the release to verify assets again. Ambiguous create/upload/publish requests are not automatically retried.
 
-Use dated prerelease tags while acceptance and measurement gates remain incomplete. Never relabel an old local build as hosted-attested, or claim an existing release is immutable without checking it. Record native execution, service compatibility and performance separately from cross-builds and checksums.
+If interrupted, rerun the **same** `publish --execute` command with the saved plan. Exact already-pushed refs and matching draft/published data are accepted. Changed refs, notes, assets, tags, duplicate releases, or modifications to published releases require inspection. Do not delete the plan or re-plan over an existing tag. A final-verification error can occur after successful publication; inspect/resume before attempting a new release.
 
-A stable release must first satisfy the [roadmap gates](../ROADMAP.md). Then use a full semantic version such as `v1.0.0` for an immutable release-specific tag. Optional convenience aliases such as `v1` may move only to compatible, validated distribution commits and must not be tags attached to immutable releases. Document changes to defaults or output semantics and use a new major version for breaking changes. SHA-pinned consumers keep explicit update control. This work creates no stable tag or alias; see [GitHub's action release guidance](https://docs.github.com/en/actions/how-tos/create-and-publish-actions/using-immutable-releases-and-tags-to-manage-your-actions-releases).
+The publisher checks packaging and reproducibility, not the test/lint/native suite. Complete those gates before planning. API recovery is covered by mock-server tests; that does not establish hosted service results or issue an attestation.
+
+## Hosted provenance and release policy
+
+The manual **Prepare action distribution** workflow runs checks, builds twice, compares outputs, and verifies assets. By default it uploads preparation artifacts only. Its optional `attest` job rechecks the package job's artifacts and uses pinned `actions/attest` to generate provenance for all nine assets. Only that job requests `id-token: write` and `attestations: write`; ordinary preparation uses `contents: read`. The workflow creates no release, tag, or distribution commit.
+
+After an attested build, consumers can verify an artifact:
+
+```text
+gh attestation verify bundled.zip -R nicoheidtke/setup-go-better
+```
+
+Check source revision, signer workflow, and invocation against the release record. Attestations bind bytes to a workflow identity; they do not establish correctness or performance. Local builds are not GitHub-hosted attestations. See [artifact attestation verification](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations).
+
+A commit SHA identifies fixed content; it does not lock release tags/assets. Verify a release's immutable status before claiming it. For immutable releases, prepare a draft, attach and verify all assets, then publish. Release immutability and its release attestation differ from build provenance. See [immutable releases](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases).
+
+Use dated prereleases until the [stable-release gates](../ROADMAP.md#before-a-stable-release) are met. Stable releases use full semantic versions such as `v1.0.0`; breaking inputs, defaults, or output semantics require a new major version. Optional `v1` aliases may move to compatible validated distribution commits and must remain separate from immutable release tags. SHA-pinned consumers retain explicit update control.

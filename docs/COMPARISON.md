@@ -15,7 +15,7 @@ Choose the official action for broad compatibility and established defaults. Con
 | Transfer | Toolkit archive handling; zstd where available, gzip fallback. [Compression](https://github.com/actions/toolkit/blob/main/packages/cache/src/internal/cacheUtils.ts#L93). | gzip/none; install/prefetch overlap; configurable transfer workers; optional content-defined chunk reuse. |
 | Scope/extras | Architecture override, mirrors, problem matchers and GHES guidance. [Options](https://github.com/actions/setup-go/blob/b7ad1dad31e06c5925ef5d2fc7ad053ef454303e/action.yml). | Hosted Linux/macOS/Windows on amd64/arm64; JSON reports and standalone installer. No mirror/architecture override or matchers; see [validation boundaries](DEVELOPMENT.md). |
 
-Both use Node 24 and prebuilt action code; neither builds the installer on consumer runners. This action bundles six native executables. A private repository may also require authorized checkout/token handling.
+Both use Node 24 and prebuilt action code; neither builds the installer on consumer runners. This action bundles six native executables.
 
 What you gain and pay for:
 
@@ -23,4 +23,4 @@ What you gain and pay for:
 - Unchanged-module checks still read every file; changed modules pay that plus packing. Chunk reuse can avoid repeated transfers, but still packs the tree and adds requests, buffers and temporary disk work.
 - Both consume runner time and GitHub cache capacity. Neither automatically includes separate linter/plugin caches. Cache formats differ, so migration starts cold.
 
-The official action can also use separately configured `actions/cache` steps. Compare acquisition, restore, workload and post-save together; [initial observations](investigation-2026-11-10.md) do not establish a general performance advantage. See [usage](USAGE.md) and [architecture/resource behavior](ARCHITECTURE.md) for details.
+The official action can also use separately configured `actions/cache` steps. Compare acquisition, restore, workload and post-save together; no controlled end-to-end performance advantage has been established. Follow the [measurement methodology](BENCHMARKS.md) for representative comparisons. See [usage](USAGE.md) and [architecture/resource behavior](ARCHITECTURE.md) for details.

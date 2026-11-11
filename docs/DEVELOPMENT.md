@@ -1,357 +1,104 @@
-# Development and release preparation
+# Development
 
-## Published ecosystem prerelease (2026-11-11)
-
-Published [v0.0.0-preview.20261111](https://github.com/nicoheidtke/setup-go-better/releases/tag/v0.0.0-preview.20261111) points to bundled distribution [952566112acde233b6b762a78ebbceb743605f9a](https://github.com/nicoheidtke/setup-go-better/commit/952566112acde233b6b762a78ebbceb743605f9a), built from clean source [137c94d17e338b98b76adb82394e0af4dae08ad4](https://github.com/nicoheidtke/setup-go-better/commit/137c94d17e338b98b76adb82394e0af4dae08ad4). Source, the existing `codex/action-preview` branch and annotated tag were pushed atomically and remote refs were checked. This supersedes the 2026-11-10 preview and the local-only statements below. Main subsequently records publication provenance and release-process tooling without changing the exact source embedded in this distribution.
-
-Clean-source full tests/vet passed on Go 1.27.1 and Go 1.26.4; all 13 Node tests, actionlint 1.7.12, formatting and whitespace checks passed. Two clean builds reproduced all six executables, every distribution file and both ZIPs identically. Both package copies passed `cmd/verify-distribution`; the native Windows executable also exactly matches the prior validated candidate. Rebuilt Windows archive/chunked main/post/Node-alias/Git-Bash fixtures passed with the real installed Go 1.26.4 workload and separate summaries. No hosted Node 24/native non-Windows/policy/presentation result is implied, and no race-detector or performance claim is made.
-
-Publication verification compared all 37 committed files with packaged bytes, checked the source marker/provenance and four Git executable modes, and verified a checkout with `core.autocrlf=true` against the full manifest and ZIPs. GitHub accepted all nine assets; each server-reported SHA-256 digest, size and uploaded state matched the local file before publication and again afterward. Bundled ZIP SHA-256: `2441cd157659791e6533ec292a0179059d7645d48db1bced953ea98cfd7d671f`; launcher ZIP: `fda6af11196ca5af98a8cdfa3bfb9e9df628941b7856153ef060015763e5026c`. GitHub reported `immutable: false`: these commit IDs are immutable references, but release tag/assets are not claimed locked. No hosted build attestation was generated or repository setting changed.
-
-Clean release outputs: `.cache/ecosystem-release-final-dist-20261111` and `.cache/ecosystem-release-final-artifacts-20261111`, plus `-repro` copies. Validation/provenance: `.cache/ecosystem-release-final-validation-20261111.json`; build/test/lifecycle logs share the `.cache/ecosystem-release-final-` prefix. Committed-tree metadata: `.cache/ecosystem-publication-20261111.json`; uploaded asset evidence: `.cache/ecosystem-release-result-20261111.json`. No workflow was dispatched/rerun, no automatic trigger or visibility changed, and upstream Exasol was untouched.
-
-## Publication-process follow-up (2026-11-11)
-
-The user authorized reducing publication friction. Repository-local `core.autocrlf=false` and `core.eol=lf` now match the source `.gitattributes`; global Git settings were left unchanged. Eight tracked CRLF working files were normalized to LF and their index refreshed with no content diff. `.editorconfig` supplies matching editor defaults.
-
-Tracked `cmd/release` now provides reviewable plan, local prepare, default dry-run and explicit publish phases; [release procedures](RELEASES.md) give the commands. It verifies two complete clean-source builds, exact raw Git blobs/modes, source/preview destinations and leases, atomic ref updates, matching draft recovery and all nine remote digests. Tests use temporary Git repositories and mock HTTP servers, covering lost create/upload replies, drafts absent from the published-tag endpoint, changed push URLs, mismatched digests, redirects and missing final verification responses. It does not dispatch workflows, alter settings, force-replace published releases or blindly retry ambiguous writes.
-
-Full tests/vet passed on Go 1.27.1 and Go 1.26.4 after the tooling changes; all 13 Node tests, actionlint, formatting and whitespace checks passed. Logs: `.cache/release-process-all-tests-1271-20261111.log`, `.cache/release-process-all-tests-1264-20261111.log` and `.cache/release-process-node-20261111.log`; summary: `.cache/release-process-validation-20261111.json`. The new publisher's live GitHub execution remains unverified. This source/documentation follow-up is separate from the already-published action distribution and does not create another release or imply hosted validation.
-
-## Ecosystem prerelease preparation (2026-11-11)
-
-Publication checks caught Git line-ending conversion changing packaged text during staging. Release packaging now emits `.gitattributes` disabling text conversion; the verifier requires it, and a real Git checkout regression checks LF and CRLF payloads with `core.autocrlf=true`. Distribution blobs are compared byte for byte with the verified package before pushing. This packaging-only correction preserves the already-tested runtime binaries and prevents full-file checksum failures in consumer checkouts.
-
-The user explicitly authorized committing, pushing and publishing the completed presentation/ecosystem tranche as dated prerelease `v0.0.0-preview.20261111`. The previously validated dirty-source candidate is implementation evidence, not the release distribution: release preparation rebuilds twice from the exact clean committed source, verifies all files/assets and Unix ZIP modes, and rechecks the real native Windows archive/chunked lifecycle. Final publication provenance is recorded after remote refs and uploaded asset digests have been verified. No hosted workflow execution, automatic-trigger or repository-setting change is authorized or implied; hosted presentation/platform/policy checks and attestations remain pending.
-
-## Pre-publication local validation boundary (2026-11-11)
-
-The user authorized the presentation and ecosystem implementation in sequential agents, with MIT licensing and GitHub private vulnerability reporting selected explicitly. At the end of that implementation stage, the tranches recorded below remained local and unpublished. Active consumer examples then pinned existing bundled preview `4871ed7af80f1f2eede85493da35d67abbab64cf`, built from source `7f78716a08f3436082a3fe685ad28a3a981607a6`. That published preview predates the new logs/progress/debug/summaries, annotations, retries, lifecycle fixtures, provenance tooling and community documents. The usage reference marked that availability boundary until the publication recorded above. No hosted workflow, automatic trigger, repository setting/visibility or upstream repository changed.
-
-The thirteenth documentation tranche updates active consumer pins, current authorization and implemented-versus-pending status while preserving historical evidence revisions. Seventy-two local Markdown links, active pins, root/alias metadata parity, required packaged-document coverage and whitespace checks passed.
-
-The independent fourteenth tranche reviewed the combined implementation and ran full tests/vet with pinned Go 1.27.1 and supported Go 1.26.4. All 13 Node tests, actionlint 1.7.12, Go formatting and whitespace checks passed. Review found that suppressing unsafe parser diagnostics also hid requested CLI help; help now uses buffered, sanitized rendering and succeeds without beginning setup. Regression coverage checks unknown-flag injection, help text, direct-stderr isolation and native annotation count. Final source-check log: `.cache/ecosystem-source-checks-final-20261111.log`.
-
-An initial all-six distribution and both ZIP variants reproduced identically and passed the new integrity/provenance verifier. Rebuilt native Windows/amd64 archive and chunked main/post/Node-alias/Git-Bash fixtures passed with the real installed Go 1.26.4 workload, 1,050 hardlinked restored files, cached Go tests, credential-safe debug logs and separate main/post summary files. Standalone `--json -` kept stdout valid JSON while readable diagnostics stayed on stderr. Logs: `.cache/ecosystem-native-lifecycles-20261111.log`, `.cache/ecosystem-standalone-20261111.json` and its `.stderr.log` companion. These are local protocol/stream checks, not live GitHub presentation or cache-service observations.
-
-Packaged source and documentation are frozen for the final reproducibility pair at `.cache/ecosystem-dist-20261111` / `.cache/ecosystem-dist-repro-20261111` and corresponding `.cache/ecosystem-artifacts-20261111` / `.cache/ecosystem-artifacts-repro-20261111`. The final command results, exact source-content digest, compiler, binary/asset hashes and byte-comparison results are recorded in `.cache/ecosystem-validation-20261111.json` and `.cache/ecosystem-final-build-20261111.log`. Keeping hashes outside packaged documentation avoids a self-reference. A dirty local package identifies `<HEAD>-dirty` and requires explicit `--allow-dirty` verification; it is not an immutable release.
-
-Node checks used local Node 26.3.0 rather than the hosted Node 24 action runtime. No local race-detector result is available without a C compiler. Hosted presentation/upload behavior, native execution on the other five targets, branch/fork/token policy gates, private reporting enablement and hosted attestations remain unverified. No hosted workflows, publication, settings or triggers changed, and no performance claim follows from these checks.
-
-## GitHub presentation implementation (2026-11-11)
-
-The twelfth sequential tranche adds the user-selected MIT license (copyright 2026 Nico Heidtke), contribution/support guidance, a security policy and minimal bug/feature issue forms. GitHub private vulnerability reporting is the chosen channel; the policy links the private form conditionally and describes a contact-request fallback without vulnerability details when it is unavailable. This work did not verify or enable the repository feature, change visibility or invent a security email/SLA. Maintainers must check eligibility and enable/verify private reporting before public adoption. Bundled distributions now require LICENSE, SECURITY.md and CONTRIBUTING.md. The README links these consumer documents; existing distribution pins are left for the following documentation tranche. Local Markdown links, issue-form YAML syntax/shape, required packaging entries, Go formatting and whitespace checks passed, together with all five root launcher tests. GitHub issue-form rendering and private reporting availability were not validated by those local checks.
-
-The eleventh sequential tranche adds [release integrity tooling and procedures](RELEASES.md). Packaging records the compiler, selected platforms, working-tree content digest and source revision; dirty builds are explicitly marked and release preparation can require clean source. It refuses source changes during packaging. Distribution checksums now cover all packaged files. `cmd/verify-distribution` checks manifest coverage, all requested binaries, source marker consistency, standalone asset identity and exact ZIP bytes/modes. The existing manual preparation workflow builds twice under ignored output paths, verifies the candidate, and optionally generates hosted build provenance in a separate narrowly permissioned job. Immutable release settings, publication and stable tags remain separate future authorized operations; no attestation was generated and no release setting changed.
-
-Pinned Go 1.27.1 release-tool tests and vet, actionlint and whitespace checks passed. Tests cover modified/missing/unlisted files, standalone tampering, forged ZIP executable modes, dirty-source rejection/explicit diagnostic opt-in, provenance platform/marker mismatches, and ignored/untracked source inputs. A native Windows/amd64 package and asset verification passed at `.cache/release-tool-native-20261111` / `.cache/release-tool-native-assets-20261111`; its provenance correctly reports dirty source. That smoke is not the final all-six reproducibility or packaged lifecycle result. Signing uses pinned `actions/attest` v4.2.1 (`508db95dd578ae2727ebd6217d5ba78e4fbda05d`) and `actions/download-artifact` v7.0.0 (`37930b1c2abaa49bbe596cd826c3c89aef350131`), resolved from official release refs and checked against their metadata. Actual hosted attestation availability depends on repository plan support.
-
-The tenth sequential tranche adds the [consumer security model](SECURITY_MODEL.md): action versus checkout/private-acquisition permissions, scoped runtime cache policy, branch/fork trust, executable cache inputs, filesystem guarantees and persistent-runner limitations. It documents that diagnostic redaction is defense in depth and JSON files/outputs retain machine data. Claims were checked against implementation and current official GitHub permission/cache/security documentation; local Markdown links and whitespace were checked. No runtime behavior, workflow trigger, repository setting or hosted validation changed. Token/branch enforcement and self-hosted guarantees remain subject to the documented validation limits.
-
-The ninth sequential tranche extends correctness coverage rather than claiming hosted verification. Coordinated independent archive writers now force a single immutable winner; coordinated chunk writers reuse exactly one finalized shared chunk and produce two independently restorable fresh manifests. Sixteen lifecycle combinations exercise restore/restore-save, sequential/prefetch, and runner access modes, including permissions narrowing before post and private-state cleanup. The opt-in packaged fixture now runs with actual Actions/debug presentation signals and checks separate main/post summaries and credential-safe subprocess logs. Its rebuilt-distribution execution belongs to the final combined-source validation record.
-
-The manual cache workflow adds clean-miss and exact reviewed-seed-key assertions, restore-only mode, deliberate failure and a manual-cancellation window; expiry fails as inconclusive. A credential-free provenance artifact is retained even when assertions fail. The existing six-native integration definition runs archive/chunked packaged fixtures on each platform using the action's Node runtime. [Lifecycle procedures](LIFECYCLE_VALIDATION.md) specify controlled default-branch/sibling probes and the unresolved fork/token boundaries. Pinned Go 1.27.1 focused new lifecycle tests and the full cache package tests/vet passed, along with eight probe/launcher Node tests, actionlint and whitespace checks. No hosted workflow, branch/tag setup, policy/trigger change or publication occurred.
-
-The eighth sequential tranche adds a dependency-free replay-safe HTTP retry policy with three application-level attempts, cancellable jittered backoff and `Retry-After` capped at five seconds. Installer GETs, cache lookup/GET/range requests and deterministic Azure payload/block-list PUTs participate; reservation/finalization remain single-shot because their outcomes can be ambiguous. Body-read, content-validation and integrity failures do not replay partially consumed data. Payload PUTs use independent section readers without new payload buffers; successful acknowledgement progress is counted once. Caller cancellation/deadlines, redirect refusal, blob/control authentication separation and secret-safe errors remain intact. The exact policy and Azure replay contracts are recorded in the cache protocol reference; latency and availability improvements are unmeasured.
-
-Pinned Go 1.27.1 focused tests and vet passed for httpretry, cachebackend, installer, cache and CLI. Tests cover transient recovery/exhaustion, bounded/date-based `Retry-After`, identical body replay, non-replayable request bodies, cancellation during backoff, certificate/redirect/auth failures, no partial-response retry, ambiguous reservation/finalization responses, worker cancellation/join after range retry exhaustion, signed-URL redaction and acknowledgement-only upload progress. Whitespace checks passed. These are local fixture results, not hosted transient-failure or performance evidence. No workflows were dispatched, published refs changed or trigger settings modified.
-
-The seventh sequential tranche adds native warning/error annotations with operation titles and remediation hints. Fatal main/post failures emit one error annotation; non-strict cache failures retain warnings, and normal misses/skips remain informational. General logging treats command-looking data as inert text, strips untrusted ANSI/control characters and embedded newlines, and redacts known runtime/GitHub tokens and HTTP(S) URLs across ordinary logs, debug messages, annotations and summaries. Only logger-created status labels retain intentional color. Installer HTTP errors hide request/proxy URLs while preserving underlying error identity; launcher startup failures use a fixed bundled-distribution/platform/permission diagnostic instead of raw spawn errors. Focused pinned Go 1.27.1 logging/cache/installer/CLI tests and vet passed, including injection/redaction, standalone output, fatal main/post annotations and cancellation identity. All five root launcher tests and whitespace checks passed. This is local source validation, not hosted rendering or a published distribution; no workflows or triggers changed.
-
-The sixth sequential tranche adds bounded, escaped Markdown summaries through the runner-owned `GITHUB_STEP_SUMMARY` file. Main writes toolchain and restore sections; post writes its own save section without reopening an earlier step's summary. The default-on `summary` input is mirrored by the Node alias and installer-only composite, and its opt-out persists in private post configuration. Summaries show outcomes/reasons/settings/payload/phase times without summing overlapping work. Presentation file failures are nonfatal; text is capped and credential/URL content redacted. Pinned Go 1.27.1 focused actionlog/cache/CLI tests and vet passed, including main success/error, partial restore, separate post output, persisted opt-out, unavailable files, Markdown injection, redaction and size caps. All five root launcher tests, actionlint and whitespace checks passed. Hosted rendering and post-summary upload remain unverified; no workflows ran or publication occurred.
-
-The fifth sequential tranche adds native debug diagnostics gated by GitHub's canonical `RUNNER_DEBUG=1` runtime signal. `ACTIONS_STEP_DEBUG=true` configures step debugging; `ACTIONS_RUNNER_DEBUG` is a separate runner diagnostic facility. Toolchain results, an explicit safe cache-configuration allowlist and full restore/save report JSON appear only in debug commands. Serialization is skipped when disabled; command payloads are escaped, known runtime/GitHub tokens and HTTP(S) URLs are redacted, and no credentials, backend objects or environment dump are logged. Optional JSON report files and standalone JSON stdout retain their existing behavior. Pinned Go 1.27.1 focused actionlog/cache/CLI tests and vet passed, covering gating, skipped serialization, command escaping, token/URL redaction, omitted private inputs and report preservation. These are local checks; no hosted debug presentation validation, workflow execution or publication occurred.
-
-The fourth sequential tranche adds throttled newline progress for toolchain downloads/extraction, snapshot transfers and validated-file publication. Counters are shared across concurrent ranges/chunks; uploads count acknowledged payload PUTs and exclude block-list requests and reused chunks. Publication reports actual published files without assuming every staged file replaces a destination entry. Percentages require known transfer totals and ongoing progress never claims 100%. A failed operation closes with `stopped`; short operations remain quiet. No timers or goroutines are introduced. Outside GitHub Actions progress is disabled and JSON stdout remains untouched. The retry tranche must preserve these semantics: count each acknowledged payload block once and identify extra downloaded attempt bytes as actual payload read, rather than claiming extra restored content.
-
-Pinned Go 1.27.1 tests and vet passed for actionlog, cachebackend, cachearchive, cache, installer and CLI. Tests cover throttling, concurrent chunk aggregation, known/unknown totals, cancellation/failure closure, silent standalone execution and a real parallel-range fixture with one shared progress counter and no signed-URL logging. Existing archive/chunked lifecycle fixtures also passed in the cache package. This is local validation; no hosted workflow or publication occurred and no progress-overhead performance claim is established.
-
-The user requested sequential implementation agents for logging and ecosystem improvements. The first tranche adds escaped, serialized GitHub log groups for version resolution, toolchain preparation, cache restoration and post-job saving. Toolchain preparation explicitly labels concurrent cache prefetch; background workers do not open overlapping groups. Group closure is idempotent and deferred on errors. Standalone diagnostics remain on stderr without workflow group commands, preserving JSON stdout. This is local source work, not a published distribution or hosted presentation validation. No workflows were dispatched and triggers remain manual-only.
-
-Pinned Go 1.27.1 focused logging/cache/CLI tests passed, covering workflow-command escaping, concurrent whole-line logging, idempotent closure, standalone output and CLI success/error group balance. Later presentation and ecosystem tranches are recorded separately.
-
-The second sequential tranche replaces unconditional cache JSON logging with concise installation and per-snapshot results, readable binary transfer units and elapsed times. Results explain dependency-exact versus compatible fallback matches, partial restores, missing/evicted chunks, empty or unchanged module saves, disabled/restore-only caching and runner write restrictions. JSON report files retain existing fields and add `match_type` and `restore_reason`; `cache-hit` semantics and cache formats are unchanged. Pinned Go 1.27.1 focused logging/cache/CLI tests and vet passed, including real fixture lookup classification, denial/miss reporting, partial restore presentation, log-line safety and JSON detail retention. This is local implementation validation only; no hosted runs or publication occurred.
-
-The third sequential tranche adds ANSI color only to recognized result labels in GitHub Actions. Success labels are green, errors red, and ordinary cache misses/skips remain neutral; native warning annotations keep GitHub's own styling. Any nonempty `NO_COLOR` disables ANSI color, and standalone logging remains plain. Workflow commands and JSON payloads are not colorized. Pinned Go 1.27.1 focused logging/cache/CLI tests and vet passed, covering color policy, immediate reset boundaries and untouched workflow group commands; no hosted presentation validation or publication occurred.
-
-## Published cache I/O prerelease (2026-11-10)
-
-Published [v0.0.0-preview.20261110](https://github.com/nicoheidtke/setup-go-better/releases/tag/v0.0.0-preview.20261110) points to bundled distribution [4871ed7af80f1f2eede85493da35d67abbab64cf](https://github.com/nicoheidtke/setup-go-better/commit/4871ed7af80f1f2eede85493da35d67abbab64cf), built from exact source [7f78716a08f3436082a3fe685ad28a3a981607a6](https://github.com/nicoheidtke/setup-go-better/commit/7f78716a08f3436082a3fe685ad28a3a981607a6). Source and the existing `codex/action-preview` branch were pushed atomically with the annotated tag; remote refs were checked. This replaces preview `e6e119a8b0b524a6ac1606d660c48603c11753df` and includes both the staging-directory/raw-tar changes and the earlier publication/compression workers. It is a prerelease, not a stable measured release.
-
-Frozen-source Go 1.27.1 builds reproduced every distribution file, all six binaries and both ZIPs identically across two builds. All six committed binary bytes match `SHA256SUMS`, `SOURCE_REVISION` identifies the exact source, and the four Unix binaries retain mode 100755. Native Windows archive/chunked main/post/Node-alias/Bash fixtures passed against the local protocol fixture with the real Go 1.26.4 workload, including multi-range archive restoration, cached test results and 1,050 hardlinked restored files. Combined-source full tests/vet passed on Go 1.27.1 and Go 1.26.4, all ten Node tests passed, and formatting/whitespace/actionlint checks passed. No hosted workflow was dispatched/rerun and automatic triggers remain disabled.
-
-GitHub release publication uploaded nine assets: both ZIPs, all six standalone binaries and their `SHA256SUMS`. Each uploaded asset's size, uploaded state and server-reported SHA-256 digest matched its local file before the draft was published. Bundled ZIP SHA-256: `b37a4ac7f982e902d451412750b979ec037fa56fa889637f78f741943b7c91d5`; launcher ZIP SHA-256: `36f84eaac9acc4aefd4cd27afc172a9d626c17452eb2ef3324790eb7489db734`. The launcher-only ZIP remains an acquisition experiment asset and is not runnable alone.
-
-Local outputs: `.cache/lowhanging-dist-20261110`, `.cache/lowhanging-artifacts-20261110` and their `-repro` copies. Logs: `.cache/lowhanging-build-20261110.log`, `.cache/lowhanging-archive-lifecycle-20261110.log`, `.cache/lowhanging-chunked-lifecycle-20261110.log`; publication metadata: `.cache/lowhanging-publication-20261110.json` and `.cache/lowhanging-release-result-20261110.json`. These results establish local correctness and distribution provenance, not hosted performance or native execution on the other five platforms. The staging diagnostic below did not demonstrate a complete restore speedup. A race-detector run remains unavailable without a C compiler.
-
-## Staging-directory and raw-tar prerelease preparation (2026-11-10)
-
-The user authorized separate implementation agents for two small optimizations and publication of a new bundled action prerelease, including the earlier local publication/compression workers. Restore remembers successful private staging-directory preparations within one invocation. Uncompressed Pack output uses a bounded 256 KiB buffer, including chunked saves' raw tar; tar close precedes flush, flush/short-write errors propagate, and cancellation avoids flushing buffered output. Gzip retains its existing independent worker buffers. Cache namespaces, archive bytes for uncompressed output and no-replace publication semantics remain compatible.
-
-Focused tests cover implicit/late parents, repeated parent paths and multiple roots, gzip/plain restoration, byte identity, small/large buffered writes, size bounds, final-flush errors, short writes and cancellation. Independent review found no remaining correctness blockers and confirmed all eight workflows remain manual-only. Combined-source full tests/vet passed on pinned Go 1.27.1 and supported Go 1.26.4; all ten Node tests, formatting, whitespace checks and actionlint passed. Source check log: `.cache/lowhanging-source-checks-20261110.log` (the separate node-runtime locator test also passed).
-
-Local Windows/amd64 diagnostic: five alternating baseline/candidate pairs on the existing synthetic 512-file, 32-module, nested read-only fixture with four publication workers gave staging medians 117.1ms / 108.0ms, but complete restore medians 779.7ms / 787.3ms. Four of five staging pairs improved; the candidate's 154.0ms staging outlier is retained. This does not demonstrate an overall restore speedup. Raw log: `.cache/staging-dirs-measure-20261110.log`; exact baseline snapshot: `.cache/staging-dirs-baseline-20261110`. A separate deterministic 513-file / 1,652,224-byte tar fixture now emits seven destination writes; identical bytes were checked against decompressed gzip packing. This diagnoses output coalescing, not elapsed-time performance.
-
-Distribution reproducibility, packaged Windows lifecycle results and immutable publication provenance are recorded separately after the frozen-source build. No hosted workflow dispatch/rerun or automatic-trigger changes are authorized for this release. Native non-Windows execution and hosted performance remain unverified for these new changes; the local race detector remains unavailable without a C compiler.
-
-## Local publication and packing workers (2026-11-10)
-
-The user prioritized implementation of the measured Windows publication and lint packing bottlenecks before further hosted experiments. This local tranche adds `cache-restore-concurrency` and `cache-compression-concurrency` (each default four, range 1-16). Directory/root preparation is sequential, then independent files publish through a bounded joined pool. Whole-archive gzip uses ordered 4 MiB members at the standard compression level, with bounded submission/reordering and compatible standard gzip restoration. Concurrency one retains sequential operation; changing worker count does not change encoded bytes. Chunk compression/transfer retains its independent existing worker limit.
-
-Agent implementation and independent cross-review found no correctness blocker. Tests cover worker limits/counters, cancellation/failure joins, late collisions, local-file priority, read-only file/directory metadata, gzip determinism, backpressure, repeated close, short/failed output writes, corrupt/truncated final members and expanded size bounds. Integrated Go 1.27.1 full tests/vet passed; ten Node tests and actionlint 1.7.12 passed all manual workflows (optional shellcheck/pyflakes disabled).
-
-Local diagnostic measurements on Windows/amd64, Ryzen 7 9800X3D, pinned Go 1.27.1:
-
-| Case | Sequential / one worker | Four workers | Scope |
-| --- | ---: | ---: | --- |
-| Complete restore | 2.283s | 0.862s | Five alternating pairs; 512 nested read-only files, 4,147,200 payload bytes, uncompressed tar |
-| Restore merge phase | 2.116s | 0.719s | Same pairs; staging medians 165.4ms / 149.6ms |
-| Compression only, GOMAXPROCS=2 | 355.8ms | 190.1ms | Three alternating rounds; 64 MiB actual Go build-object corpus, 210 files |
-| Complete Pack, GOMAXPROCS=2 | 384.5ms | 203.2ms | Three alternating pairs; separately captured 64 MiB corpus, 204 files; includes walk/read/header/file checks |
-
-The compression corpus SHA-256 was `87167b6d86123060a2f83d51fa7ad624c495760069d398eb6fbcfe600bce70f2`; legacy single-member gzip took a 356.0ms median on the two-CPU case. Legacy encoded size was 16,924,206 bytes versus fixed-member 16,922,542 bytes, a corpus-specific difference, not a promised compression ratio. The complete-Pack fixture SHA-256 was `fdba36eac856ea1eb311d95308f7fb3285a7b728c197a47fb2b443991646b179`; it encoded to 16,987,437 bytes with both worker counts. Its first sequential sample was a 681.1ms warmup outlier retained in the raw record. There are too few local samples for hosted or general performance claims, and the two corpora must not be conflated.
-
-Raw logs: `.cache/publication-pairs-20261110.log`, `.cache/packing-pipeline-measure-20261110.log`, `.cache/fullpack-pipeline-measure-20261110.log`. Gzip steady retained payload capacity is approximately 52 MiB at four workers, plus codec/runtime/transient buffer-growth/GC overhead; this is not a peak-memory measurement. Publication fallback payload buffers are 32 KiB per worker, plus archive/path metadata. File and compression workers join before cleanup; blocking filesystem/destination I/O may finish before cancellation can return.
-
-Final full tests/vet passed with pinned Go 1.27.1 and supported Go 1.26.4. All six executables cross-built twice with identical manifests; bundled and launcher ZIP hashes also matched. Native Windows root main/post/Node-alias lifecycle tests passed for both archive and chunked storage against the local cache-v2 fixture, including a real Go 1.26.4 workload, multi-range archive restore, cached package results, 1,050 hardlinked restored files and Bash offline reuse. No race-detector run was available without a local C compiler; synchronized concurrency/cancellation tests and independent cross-review passed.
-
-Local candidates are `.cache/publication-packing-dist-20261110` and `.cache/publication-packing-artifacts-20261110`, with `-repro` copies for reproducibility. Final lifecycle logs are `.cache/publication-packing-archive-lifecycle-20261110.log` and `.cache/publication-packing-chunked-lifecycle-20261110.log`. These are generated from uncommitted source, not immutable releases. The changes remain local and uncommitted; published preview `e6e119a8b0b524a6ac1606d660c48603c11753df` does not contain this tranche. No GitHub workflows, commits, pushes or new publication were performed for it.
-
-## Improved preview hosted consumer evidence (2026-11-10)
-
-Unchanged repeat [42867214965](https://github.com/nicoheidtke/exasol-personal/actions/runs/42867214965) passed at the same consumer/preview SHA and archive settings. All four populated module trees skipped packing/upload; the extra one-file/151-byte addition did not recur. Module upload was zero and total Go cache upload fell from 2.70GB to 1.52GB, all fresh build snapshots. Whole-job timing remained variable, including Windows pytest increasing 89.13→140.22s. See the [repeat record](investigation-2026-11-10.md#unchanged-repeat-module-caches-converged). Next is a separately seeded/warmed chunked experiment, which remains unverified on GitHub. No runs were dispatched by the assistant.
-
-The user independently executed [42862214728](https://github.com/nicoheidtke/exasol-personal/actions/runs/42862214728) with preview `e6e119a8b0b524a6ac1606d660c48603c11753df`, unchanged application/dependency files and default split/gzip archive settings. Linux/amd64 and Windows/amd64 cache restore/post-save passed without cache warnings; all published files used hardlinks. Lint modules skipped compression/upload with a 3.64s content check. The other three populated module trees each gained one file/151 bytes and therefore re-uploaded. Windows file staging/publication remains the largest restore bottleneck. See the [follow-up investigation](investigation-2026-11-10.md#follow-up-improved-preview-consumer-run) for timings and the proposed unchanged-repeat, then separate chunked seed/warm experiment. This extends hosted archive evidence; chunked storage and other platforms/policy cases remain unverified. No workflows were dispatched during inspection.
-
-## Consumer improvement preview (2026-11-10)
-
-The user authorized delegated local implementation and publication of a replacement bundled preview after the investigation. This supersedes the earlier investigation-only publication restriction. GitHub workflow dispatch/rerun, automatic triggers, visibility changes and upstream Exasol changes remain outside this authorization.
-
-The tranche implements unchanged-module detection before compression, destination-volume staging with no-replace publication, finer restore metrics and configurable bounded whole-archive range downloads. Storage and compression defaults remain archive/gzip; old compatible archives remain readable. Split transfer/merge pipelining remains deferred: it needs additional initialization/cancellation coordination and the earlier traces offered only about 6-10 seconds of possible overlap before the range-download changes. Whole-build archive saves still upload fresh complete snapshots; chunked reuse remains optional.
-
-Local validation on Windows/amd64:
-
-- Full tests and vet passed with pinned Go 1.27.1 and supported Go 1.26.4. New cases cover timestamp-only module churn, same-size mutations with preserved timestamps, existing local module contents, no-compression/no-upload skips, invalid ranges/lengths/encodings, single-response fallback, worker bounds, cancellation/join, no-replace publication, copy fallback and staging cleanup.
-- All nine Node tests passed on Node 26.3.0. Actionlint 1.7.12 passed all manual workflows after regenerating local action metadata (optional shellcheck/pyflakes disabled). New runtime credentials are handled by the existing Node 24 action lifecycle; these local checks do not execute Node 24.
-- The six-platform candidate cross-built with Go 1.27.1. Its native Windows root main/post and Node alias passed against the local cache-v2 fixture for archive and chunked storage, including a real Go 1.26.4 workload and Bash offline reuse. Archive mode exercised multiple HTTP ranges; chunk mode verified no nested ranges. Warm workload tests reported cached results, and both restores published 1,050 files by hardlink without a second payload copy.
-- A synthetic uncompressed restore fixture with 512 nested read-only module files measured 4.012 seconds/op on frozen pre-change source `a2f20c4` and 2.128 seconds/op on the new source, three iterations each on this Windows machine. Ordering was not paired, there are too few samples for a performance conclusion, and this excludes hosted networking/workload behavior. The benchmark remains in `internal/cachearchive/restore_benchmark_test.go` for repeatable diagnosis.
-
-Candidate paths are `.cache/improved-dist-20261110` and `.cache/improved-artifacts-20261110`; native lifecycle logs are `.cache/improved-archive-lifecycle-20261110.log` and `.cache/improved-chunked-lifecycle-20261110.log`. Frozen-source reproducibility and immutable publication are recorded below. No hosted workflows were dispatched. The new range path and restore optimizations still need consumer-run verification on GitHub.
-
-### Published improvement preview
-
-Source [232c3fe2d2d729a67acb08e4cc725181215bdf1c](https://github.com/nicoheidtke/setup-go-better/commit/232c3fe2d2d729a67acb08e4cc725181215bdf1c) and bundled preview [e6e119a8b0b524a6ac1606d660c48603c11753df](https://github.com/nicoheidtke/setup-go-better/commit/e6e119a8b0b524a6ac1606d660c48603c11753df) were published together to `main` and `codex/action-preview`. The preview records that exact source in `SOURCE_REVISION`; all six committed executable bytes match `SHA256SUMS`, and all four Unix executables retain mode 100755.
-
-Frozen-source full Go 1.27.1 tests/vet and formatting/whitespace checks passed. Two complete builds produced identical six-executable manifests and bundled/launcher ZIP hashes. Reproducibility copies are `.cache/improved-dist-repro-20261110` and `.cache/improved-artifacts-repro-20261110`. Bundled ZIP SHA-256 is `f03a5f9518d9a44c51def4e9583bd253dfc5950ae6fbb6224efa97d252af0972`; launcher ZIP SHA-256 is `161609c8c3d95436a9ccf53ee562ff41ce5285aea9aa4075378fff028fc21e58`. GitHub branch heads were checked after the atomic push. This is a bundled preview for the user to test, not a stable measured release. No GitHub workflows were dispatched or rerun.
-
-The subsequent documentation update makes README a short product overview with links to every documentation page. Full inputs/outputs and usage live in [USAGE.md](USAGE.md); runtime/resource details live in [ARCHITECTURE.md](ARCHITECTURE.md); [COMPARISON.md](COMPARISON.md) compares behavior and tradeoffs against verified official setup-go v7.0.0 without a speed claim. Relative links and preservation of the complete input/output tables were checked. The packager includes these pages and the handoff in future distributions; a native package verified that layout. This documentation update does not change the already published preview's executable bytes or immutable provenance.
-
-## Latest consumer evidence (2026-11-10)
-
-The user supplied independently executed Exasol cold/warm runs on Linux/amd64 and Windows/amd64. Existing logs confirm successful split/gzip archive restoration and automatic post saves; most warm unit-test packages reused cached results. This extends the earlier Linux smoke evidence, but does not validate chunked storage or the full policy/platform matrix. The [consumer investigation](investigation-2026-11-10.md) records exact revisions, timings, transfer/packing costs, unexpected module re-uploads and comparison limitations. No workflows were dispatched during the investigation; further runs still require authorization.
-
-The consumer README describes the action interface. Development status and future ideas belong in [ROADMAP.md](../ROADMAP.md), not the README.
-
-## Current local implementation and validation
-
-The current authorization is to finish the complete planned installer/cache implementation locally before further GitHub testing. On 2026-11-08 the user authorized committing and pushing the current source after switching every workflow to manual-only to avoid GitHub Actions costs during the PoC. Do not dispatch/rerun workflows, restore automatic triggers, or publish a replacement preview without separate authorization. The user authorized the first self-contained performance tranche on 2026-11-08: installation/cache-prefetch overlap and optional chunked snapshots using the existing cache service. Other milestone 3 experiments and compatibility additions remain outside this tranche. See the [implementation plan](IMPLEMENTATION_PLAN.md).
-
-The local working tree adds the root Node lifecycle, Go restore/save policy, cache-v2 backend, deterministic tar/gzip archives, configurable transfer/layout policies, archive-only opt-in build trimming, correctness fixtures and manual measurement definitions. Source completion is separate from hosted validation; the initial Linux/amd64 split/gzip archive cold-save and warm-restore/post-save path has now passed against GitHub; the broader platform/policy matrix remains unverified. The original preview `900c8d6495677c90d124b7a4f0ce0627595a0efb` is historical installation-only code. Current preview `13f611572c059e38af11315888f7add1566bbb2e` includes the cache/version-file/performance implementation and the hosted cache-version fix. README examples therefore require a new bundled distribution SHA rather than using that preview.
-
-Local checks on Windows/amd64 with the current implementation:
-
-- Full `go test ./...` and `go vet ./...` passed with the supported Go 1.26.4 toolchain and the pinned Go 1.27.1 packaging compiler. The earlier integrated checks also passed with the initially installed Go 1.27.0.
-- Go 1.27.1 was downloaded locally through the existing checksum-verifying installer; the install report records `source: download`, and its executable reports `go1.27.1 windows/amd64`.
-- Two local Go 1.27.1 package builds produced identical SHA-256 manifests for all six native executables and identical bundled/launcher ZIP archives. This verifies reproducibility for that local source/compiler snapshot, not native execution of the other five targets.
-- Archive tests cover deterministic gzip/plain roundtrips, fractional file mtimes and permissions, existing-file priority, read-only modules, corrupt/truncated downloads, size bounds, malicious paths/links/Unicode case collisions, destination symlinks, trimming scope and cancellation.
-- Dependency-free launcher tests passed locally with Node 26.3.0. The action runtime is Node 24; local Node 26 results do not verify that runtime.
-- The opt-in packaged Windows lifecycle integration passed against a local cache-v2 fixture using the Go 1.27.1-built distribution and the existing Go 1.26.4 toolchain. It ran root Node setup, a real `testdata/smoke` workload and post upload; a fresh `experimental/node` invocation restored the combined archive with `cache-hit=true`, reused the Go test cache, and saved a fresh key. State cleanup, reports, no bearer token on blob requests and Bash cache-off offline reuse passed. This verifies local Windows/loopback behavior, not the live GitHub service or comparative performance.
-- After final source review, cancelled/expired operation handling honors the warning/strict policy and optional report-write errors follow the same policy. The frozen-source Go 1.27.1 `go test ./... -count=1` and `go vet ./...` passed all packages, including the cache workload helper and workflow reporter. Formatting checks passed.
-- Both dependency-free Node bridge suites passed all six tests with Node 26.3.0. Actionlint 1.7.12 passed every workflow with no rule exclusions; optional shellcheck/pyflakes integrations were disabled.
-- The final production-fix build was packaged twice with Go 1.27.1: all six binary manifests and both archive hashes matched. The rebuilt distribution passed the packaged lifecycle/alias/Bash smoke again. Final documentation was refreshed in both distributions.
-- The planned local implementation/correctness gate is complete. The later 2026-11-09 smoke record below verifies the initial Linux/amd64 archive main/post path on the action runtime. Other native cache platforms, hosted chunked/policy cases and comparative measurements remain pending authorization.
-
-## Historical installer verification
-
-The user authorized validation on 2026-09-22, superseding the earlier implementation-only restriction.
-
-Verified locally on Windows/amd64 with Go 1.26.4:
-
-- Go sources formatted; `go test ./...` and `go vet ./...` passed.
-- Windows installer packaged and used to download, verify, and install Go 1.26.4 into a path containing spaces.
-- Minor selector reused that installation with HTTP(S) proxies pointing to a closed local port.
-- The installed toolchain passed the pinned `google/uuid` and `golang.org/x/sync` smoke test in `testdata/packages`.
-- Node and Git Bash launchers passed offline exact-version reuse. Git Bash required execution outside the local sandbox to create its signal pipe.
-- All six native executables cross-compiled. Two builds produced identical SHA-256 manifests for the six executables and both ZIP archives. This is packaging verification, not native validation of the other five platforms.
-- All workflow files passed actionlint v1.7.12 with optional shellcheck/pyflakes integrations disabled. An initial v1.7.7 run was too old to recognize Node 24 and newer hosted runner labels.
-- Exasol Personal generation and Windows/amd64 application compilation passed with the installed Go 1.26.4 toolchain. Its full Windows Go unit suite failed; see [validation record](validation-2026-09-22.md).
-
-The initial source commit `c94080c` is published on `main` at `https://github.com/nicoheidtke/setup-go-better`. [Hosted installer validation](https://github.com/nicoheidtke/setup-go-better/actions/runs/35788775487) passed all nine jobs: unit tests/vet on three operating systems and native cold-install/offline-reuse integration on all six target platforms. Comparative performance measurements remain pending. Local downloads and module verification used workspace caches; initial attempts to write the user's module checksum cache were denied and rerun with a workspace GOPATH. Go also emitted telemetry upload-token permission warnings without failing the completed checks.
-
-The manual Exasol Personal workflow pins commit `54b7e1a7454f49d821102bcab5bfce2c7747f8c6` and runs separate Linux build/test/lint jobs plus a Windows build. The initial hosted run used Go 1.26.4; the locally modernized workflow selects Go 1.26.8, above its declared 1.26.3 minimum. Generation uses upstream's `SKIP_EMBED=true` mode and `containers_image_openpgp` build tag. These are Go workload checks, not release builds or full Python integration/deployment tests. See [workload methodology](BENCHMARKS.md#primary-real-world-workload).
-
-### Local modernization, pending hosted validation
-
-The user requested no further GitHub workflow runs while implementation is completed. The later 2026-11-08 instruction permits source commits/pushes with all workflows manual-only; dispatch/rerun still requires authorization. The published preview remains the previously validated Go 1.26.4 build; the modernized source workflows have not run on GitHub.
-
-- Official action dependencies are pinned to verified releases: checkout v7.0.1, setup-go v7.0.0, upload-artifact v7.0.1. All three declare Node 24. The old checkout/upload-artifact v4 references caused Node 20 deprecation warnings.
-- Bootstrap/packaging compiler: Go 1.27.1. Unit CI covers both Go 1.26.8 and 1.27.1. The cold installer integration deliberately retains Go 1.26.0 to exercise the lowest supported release.
-- Exasol, consumer examples, and default runtime benchmarks use the current Go 1.26 patch, 1.26.8. This keeps the acceptance workload within Exasol's declared minor version.
-- Weekly Dependabot updates cover official action pins and smoke-test module dependencies. The action's own consumer SHA is excluded because it must identify a bundled distribution.
-- CI includes formatting and actionlint checks, bounded job timeouts, and cancellation of superseded validation runs. Manually dispatched benchmark jobs are not automatically cancelled.
-
-Official versions were checked against GitHub release metadata and Go's download metadata on 2026-09-22. Changing the packaging compiler requires fresh reproducibility and native validation checks before replacing the preview distribution.
+Start with [CONTRIBUTING.md](../CONTRIBUTING.md) for prerequisites, checks, and change expectations. This guide covers integration and current validation boundaries. [Release procedures](RELEASES.md) cover packaging/publication; [measurement methodology](BENCHMARKS.md) covers performance evidence.
 
 ## Source layout
 
-- `cmd/setup-go-better`: native setup and post-job entrypoints.
-- `internal/installer`: version selection, installed-toolchain discovery, release metadata, verified extraction, publication.
-- `internal/actionenv`: GitHub environment, output and post-state files.
-- `internal/actionlog`: serialized groups, statuses, progress, annotations, debug diagnostics and bounded job summaries.
-- `internal/cache`: cache inputs, namespace/dependency identity, restore/save lifecycle, private post state and reports.
-- `internal/cachearchive`: bounded deterministic tar/gzip snapshots, private staging and safe additive merge.
-- `internal/cachebackend`: GitHub cache-v2 control protocol and signed blob transfer; see [protocol notes](../internal/cachebackend/PROTOCOL.md).
-- `internal/httpretry`: bounded replay-safe request retries.
-- `internal/distribution`: source provenance, full-file manifests and distribution/ZIP integrity checks.
-- `cmd/package`: reproducible native executables and action archives.
-- `cmd/verify-distribution`: local distribution and release-asset verification.
-- `cmd/benchmark`, `cmd/acquisition`, `cmd/cache-benchmark`, `cmd/workflow-report`: measurement tools.
-- Root `launch.cjs`, `post.cjs`, `launcher.cjs`: dependency-free Node 24 runner bridge.
-- `experimental/node`: root lifecycle alias; `experimental/composite`: installer-only Bash launcher experiment.
-- `.github/workflows`: validation, packaging, and manually dispatched benchmarks.
+| Path | Responsibility |
+| --- | --- |
+| `cmd/setup-go-better` | Native setup and post-job entrypoints |
+| `internal/installer` | Version selection, discovery, verified download/extraction, and installation |
+| `internal/cache` | Inputs, identity, restore/save policy, private post state, and reports |
+| `internal/cachearchive` | Deterministic tar/gzip, staging, and additive publication |
+| `internal/cachebackend` | Cache-v2 and signed blob transfers; see [protocol](../internal/cachebackend/PROTOCOL.md) |
+| `internal/actionenv`, `internal/actionlog`, `internal/httpretry` | Runner protocols, presentation, and replay-safe retries |
+| `internal/distribution`, `internal/release` | Provenance, integrity, and publication |
+| `cmd/package`, `cmd/verify-distribution`, `cmd/release` | Distribution/release commands |
+| `cmd/check`, `cmd/check-docs` | Contributor checks and documentation consistency |
+| Other `cmd/` tools | Installer, acquisition, cache, and workflow measurements |
+| Root `.cjs` files | Dependency-free Node 24 runner bridge |
+| `experimental/` | Node alias and installer-only Bash comparison |
+| `testdata/`, `.github/` | Workloads, fixtures, and manual workflows |
 
-No Go modules beyond the standard library are required. No npm toolchain is required.
+Runtime Go code uses the standard library. Consumers use bundled executables without building the action or installing npm packages. Source-only revisions cannot run as actions.
 
-## Development and consumer testing
+## Maintained interfaces
 
-Keep source development on `main` and feature branches. All eight workflow definitions currently have only `workflow_dispatch`; pushes and pull requests do not start these workflows. This temporary PoC policy avoids hosted-run costs. Do not add automatic triggers or dispatch runs without authorization. Integration builds a temporary distribution and invokes it with `uses: ./dist`, checking cold installation, dependency compilation, action outputs, and offline reuse. This exercises the actual GitHub environment export and launcher behavior that local unit tests cannot cover.
+The root `action.yml` is the recommended consumer entrypoint. `experimental/node` remains a compatibility alias for the same main/post lifecycle. `experimental/composite` and `launch.sh` are installer-only comparison paths; they do not provide the cache lifecycle. Integration fixtures and launcher benchmarks still exercise these paths, so changing or removing them requires updating that coverage and assessing compatibility.
 
-After explicit authorization resumes hosted testing/publication, publish bundled preview commits on `codex/action-preview` for consumer testing. A preview contains all six native executables, checksums, and `SOURCE_REVISION` identifying the source commit. Preserve Unix binary executable bits in Git's index when preparing a preview on Windows. Pin consumer workflows to the full distribution commit SHA, not a source commit or a moving branch. Previews carry no stable-release or performance guarantee.
+Measurement commands are maintainer tools, separate from the action's public inputs and outputs. Their purposes and measurement limits are listed in [performance measurement](BENCHMARKS.md#tools). Keep generated distributions and raw reports in ignored output directories.
 
-The consumer smoke workflow is manual and requires the full bundled distribution commit SHA as `distribution-sha`. It checks out that immutable preview beside the workload, verifies `SOURCE_REVISION` and binary checksums, then invokes it without compiling the installer. It tests `go-version-file` with the pinned package module and strict restore/save caching. Repeat with `expect-hit` enabled to verify the preceding post-save. It does not default to the historical installation-only preview. The Exasol workflow provides the larger Go build/test/lint workload. A full Exasol integration or deployment run is a separate acceptance stage.
+## Validation
 
-The initial bundled preview is `900c8d6495677c90d124b7a4f0ce0627595a0efb`. The repository is currently private. Direct use from the public `exasol/exasol-personal` repository requires a public distribution repository; GitHub's private-action sharing settings only cover private repositories under the same owner. An explicitly authenticated checkout followed by a local action invocation is another option for controlled private testing. No repository visibility or sharing settings were changed.
+Release builds use Go 1.27.1. Also check the Go 1.26 line and use Node 24 to verify the action runtime. Run contribution checks after changes; native integration and hosted service checks cover additional boundaries.
 
-After correctness and performance gates pass, publish a versioned distribution and update consumers to its SHA. GitHub Marketplace listing is optional for using a repository action. This separation of source commits from bundled distribution commits follows [GitHub's action release guidance](https://docs.github.com/en/actions/how-tos/create-and-publish-actions/release-and-maintain-actions).
+### Local packaged lifecycle
 
-### Preparing the next preview
-
-Keep publication separate from local preparation. Before pushing source, rerun tests/vet, the launcher suites, formatting and actionlint after the final changes. Build twice with the pinned compiler and compare all six binary checksums and both ZIP archives. Run the packaged Windows main/post fixture against the rebuilt action. These local checks do not replace native hosted or live cache-service validation.
-
-Earlier source publication authorizations produced the recorded previews. A new source push or bundled publication for the 2026-11-11 local tranche remains a separate authorized operation. When authorized, build its distribution from the exact committed source revision with `--require-clean`. The packager records that commit in `SOURCE_REVISION` and content/compiler metadata in `SOURCE_PROVENANCE.json`; preserve executable bits for the four Unix binaries in the preview's Git index, and verify all distribution/asset checksums. Uncommitted changes cannot truthfully be identified by the existing HEAD SHA alone. Source pushes and pull requests do not trigger workflows under the current manual-only policy. Preview publication and hosted execution remain separate steps.
-
-Use the newly published bundled commit SHA in the manual consumer workflow and in any separate Go repository. First pass the small pinned-package checks and two-dispatch cache save/restore gate, then the recorded Exasol workload. Cross-repository access must be configured before a private action can be consumed. Branch/default-branch, failed/cancelled jobs and concurrent cache writers remain additional hosted correctness gates. Keep performance workflows manual until correctness passes; a preview does not establish a speedup or a stable release.
-
-## Local validation
-
-Use Go 1.27.1 to match the packaging workflow. Both that compiler and Go 1.26.4 have completed the recorded local checks; rerun the checks after changing source. Local Node 26 is supported for development tests. CI explicitly runs the launcher suites with the runner's Node 24 action executable, rather than whichever `node` happens to be on PATH.
+Package the native platform into an ignored directory (substitute the host OS/architecture):
 
 ```text
-gofmt -w cmd internal testdata/smoke
-go test ./...
-go vet ./...
-go run ./cmd/package --platform windows/amd64
+go run ./cmd/package --platform windows/amd64 --out .cache/native-dist
 ```
 
-Substitute `linux/amd64`, `linux/arm64`, `darwin/amd64`, `darwin/arm64`, or `windows/arm64` as appropriate. Unit tests serve fixture metadata and archives locally; they do not require public Go downloads. Integration jobs deliberately download official toolchains and execute a real module in a subsequent workflow step.
+`TestPackagedLifecycle` consumes a prebuilt distribution and an installed toolchain; it never downloads Go or compiles the action. Set these environment variables:
 
-`dist` is generated and ignored. Local workflow tests use `uses: ./dist`; the source-tree action requires the generated `bin` directory and must not be advertised as a runnable distribution by itself.
-
-## Reproducible distribution
+| Variable | Value |
+| --- | --- |
+| `SETUP_GO_BETTER_TEST_DIST` | Absolute distribution directory |
+| `SETUP_GO_BETTER_TEST_RUNNER_TEMP` | Parent of `setup-go-better/toolchains/<version>/<os>-<arch>/bin/go[.exe]` |
+| `SETUP_GO_BETTER_TEST_VERSION` | Installed exact version; default `1.26.4` |
+| `SETUP_GO_BETTER_TEST_STORAGE` | Run once with `archive`, once with `chunked` |
+| `SETUP_GO_BETTER_TEST_NODE` | Node 24 executable; default `node` |
+| `SETUP_GO_BETTER_TEST_BASH` | Optional Bash executable for installer-only reuse |
 
 ```text
-go run ./cmd/package --out dist --archives artifacts
+go test ./internal/cache -run '^TestPackagedLifecycle$' -count=1 -v
 ```
 
-The packager uses `CGO_ENABLED=0`, fixed architecture baselines, `-trimpath`, no VCS stamping, no build ID, and stripped symbols. ZIP entry times and modes are deterministic. Reproducibility requires identical sources, compiler, and build settings; the manual packaging workflow compares two builds.
+The test exercises root main/post, the Node alias, reports/state/summaries, real compilation, and offline Bash reuse against a loopback cache-v2 fixture. Without the distribution variable it is skipped. Unit fixtures cover archive safety, existing-file priority, read-only modules, cancellation/worker cleanup, access-policy changes, and forced immutable-writer races.
 
-Outputs:
+### Hosted lifecycle
 
-- `dist`: action metadata, launchers, required license/policy documentation, six executables, source provenance and full-file checksums.
-- `artifacts/bundled.zip`: the complete action distribution.
-- `artifacts/launcher.zip`: the same distribution without native executables, for acquisition experiments only.
-- `artifacts/setup-go-better-<os>-<arch>[.exe]`: individual native executables.
-- `artifacts/SHA256SUMS`: checksums of experiment/release assets.
+Workflows are manual; maintainers control execution and costs. Native integration checks all six targets. The consumer workflow takes a full distribution SHA and checks the published bundle.
 
-The launcher-only ZIP is not a runnable action by itself. The acquisition experiment measures fetching it followed by the matching binary; it does not add a runtime-downloading production launcher.
+Use `cache-validation.yml` with a fresh scope for each independent probe. Fix source/toolchain, runner, dependencies, job identity, and settings within each pair. Inspect completed post logs before treating `probe.json` intended `fresh_keys` as saved entries. `expect-hit` requires a complete restore; `expect-miss` requires no match or payload; `expected-match` requires exact reviewed seed keys.
 
-Use [release preparation and verification](RELEASES.md) for clean-source builds, `cmd/verify-distribution`, reproducibility checks and the separate optional hosted-attestation procedure. Required bundled documents include this guide, the usage/security/lifecycle/release references, LICENSE, SECURITY.md and CONTRIBUTING.md.
+| Case | Required observation |
+| --- | --- |
+| Cold/warm | Successful seed post-save, then restore-only hit on exact seed keys |
+| Restore-only | No save; later restore in the fresh scope remains a clean miss |
+| Failed job | Default policy does not save; opted-in save requires successful post and later restore |
+| Cancelled job | Actual cancelled conclusion, no save-post execution, later clean miss; wait expiry is inconclusive |
+| Concurrent snapshots | Distinct keys, reviewed post results, and valid later restore; reservation conflict alone proves no committed chunk |
+| Branch access | Default-branch fallback works; sibling-only seeds remain inaccessible where service rules deny them |
+| Restricted access | Actual runner token policy enforces restrictions; environment overrides only test local handling |
 
-The packaging workflow prepares downloadable artifacts and does **not** create tags, releases, commits, or push to a repository. To publish, place the complete distribution on a release commit, preserve executable modes for Unix binaries, and point the chosen action tag at that commit. A future release process can automate that once repository ownership, versioning, and publication policy are decided.
+Fork/merge-ref behavior requires its real event/token context. Manual dispatch cannot establish it. Never broaden permissions or use `pull_request_target` to bypass a probe. Intentionally failed policy probes retain their failed conclusion and need independent post inspection.
 
-## Implementation boundaries
+Retain revisions, runner image, Go version, inputs, event/ref, seed/matched keys, job/post conclusions, warnings, and logs. List incomplete/unavailable cases. Ordinary artifacts precede post hooks and cannot collect save reports; use debug logs or a subsequent collector. Synchronous benchmarks capture both phases but exclude runner post dispatch.
 
-Completion is based on a marker, a matching `VERSION` file, and a regular Go executable. This trusts the runner's local filesystem; it is not a revalidation of every installed compiler file. Failed fresh installs are cleaned up. An incomplete pre-existing destination produces an actionable error instead of being overwritten.
+## Support and validation status
 
-Archive links and duplicate file entries are rejected. Extraction writes only into a newly created staging directory and validates archive paths before writing. The action does not promise robust shared writable state across untrusted processes on a self-hosted runner.
+This prerelease targets Go 1.26+ on hosted Linux/macOS/Windows, amd64/arm64. Caching defaults off; enabled caching defaults to archive/gzip. Self-hosted runners have no guarantee against hostile concurrent filesystem writers.
 
-Networking uses a bounded client and operation context, honors the standard Go proxy environment, and surfaces errors rather than installing an unverified fallback. Replay-safe requests now have bounded cancellable retries as recorded in the 2026-11-11 local implementation section; the published 2026-11-10 preview predates that policy. Availability and latency effects remain unmeasured.
+| Area | Recorded evidence and limits |
+| --- | --- |
+| Latest release source | Tests/vet on Go 1.27.1/1.26.4, 13 Node tests on Node 26.3.0, formatting, actionlint 1.7.12 passed |
+| Integrity | All six binaries and both ZIPs reproduced; committed bytes, Unix modes, and nine uploaded asset digests verified |
+| Native packaged caching | Windows archive/chunked main/post/alias/Bash passed locally; cross-compilation proves no other native behavior |
+| Hosted service | Earlier Linux archive cold/warm smoke and Linux/Windows amd64 consumer archive runs passed on earlier distributions |
+| Remaining gates | Current Node 24/presentation, six-native lifecycle, hosted chunked, branch/fork/token policies, failure/cancellation, service concurrency |
+| Performance | No controlled end-to-end speedup established |
 
-The benchmark tools and packaging commands execute subprocesses only when explicitly run. Merely writing these files has not executed them.
+Evidence belongs to its revision. Rerun relevant checks after changes; earlier hosted runs cannot verify new behavior. The [roadmap](../ROADMAP.md) lists remaining release gates.
 
+## Latest published distribution
 
-## Cache lifecycle and reports
+[v0.0.0-preview.20261111](https://github.com/nicoheidtke/setup-go-better/releases/tag/v0.0.0-preview.20261111) identifies distribution `952566112acde233b6b762a78ebbceb743605f9a`, reproducibly built from clean source `137c94d17e338b98b76adb82394e0af4dae08ad4` with Go 1.27.1. Later source changes do not change that bundle.
 
-The root Node action receives `ACTIONS_RESULTS_URL` and `ACTIONS_RUNTIME_TOKEN` through the runner and invokes Go for setup/restore and post/save. Composite steps cannot provide the same automatic credential/post lifecycle. No npm dependencies are used. The launcher inherits environment credentials; persisted private state contains cache paths, keys, configuration and module digest, never runtime tokens or signed blob URLs. The post process receives fresh credentials.
+| Asset | SHA-256 |
+| --- | --- |
+| Bundled ZIP | `2441cd157659791e6533ec292a0179059d7645d48db1bced953ea98cfd7d671f` |
+| Launcher ZIP | `fda6af11196ca5af98a8cdfa3bfb9e9df628941b7856153ef060015763e5026c` |
 
-The main step exports a uniquely named `SETUP_GO_BETTER_SAVE_ON_FAILURE_<github.action>` environment flag. The action's post expression reads that flag because action inputs are not available when GitHub evaluates post conditions. Successful jobs save by default in restore-save mode; failed jobs require `cache-save-on-failure`; cancelled jobs skip save. Post-state errors remain visible rather than silently accepting untrusted or incompatible state.
-
-Restore merges into the selected Go executable's existing module/build paths. Existing local regular files take priority. Full download, decompression and archive validation precede any destination creation; merge failures can leave new files without replacing local entries. Read-only module directory modes are temporarily relaxed when needed and restored afterward. This does not promise safe shared writable state across hostile processes on self-hosted runners.
-
-Cache failures warn by default; strict mode makes operational errors fail the action. Missing runtime credentials skip caching. Cache-off avoids cache preparation and state. Networking has cancellation/time bounds and the replay-safe retry policy documented in the cache protocol reference; reservation/finalization remain single-attempt. Backend conflicts/permissions are distinguished where service responses identify them; immutable keys include attempt identity and a random invocation suffix. GitHub, rather than client-side branch enumeration, enforces branch/default-branch access.
-
-`cache-report` writes the restore report, and the post hook writes the same path plus `.post.json`. Regular upload-artifact steps precede all action post hooks; they cannot collect the later save report. Current source emits full post report JSON only in step-debug logs; the historical previews emitted it in ordinary logs. Collect final job timings/logs from a subsequent job or external report command, or use the explicit-lifecycle benchmark harness for report artifacts containing both phases. A regular-step artifact containing only restore metrics must not be described as full lifecycle measurement.
-
-The action's 10 GiB maximum applies independently to expanded tar (headers included) and transferred archive bytes. Cache reports count regular-file payload and transfer bytes separately. Full temporary disk usage, filesystem metadata, HTTP/TLS overhead, and cache-service storage cost are not measured by these reports. Restore holds both the downloaded archive and staged extracted payload before merge; save holds a packed archive. Do not reuse the installer's peak-temporary metric as a cache peak metric.
-
-### Repeating the local packaged lifecycle check
-
-After packaging a Windows distribution and making a supported local Go installation available, set `SETUP_GO_BETTER_TEST_DIST` to the absolute distribution directory and run:
-
-```text
-go test ./internal/cache -run TestPackagedLifecycle -count=1 -v
-```
-
-The test uses a loopback protocol fixture, real launcher processes and the small source workload. `SETUP_GO_BETTER_TEST_BASH` can select Git Bash for the installer-only comparison. Without the opt-in distribution variable, ordinary unit runs skip this packaged integration.
-
-### Version-file input (2026-11-08)
-
-The user requested `go-version-file` before consumer testing. The root action, Node alias, Bash experiment and standalone CLI accept go.mod/go.work paths. Parsing stays in standard-library Go without invoking an existing Go compiler. Explicit selectors bypass file reads; concrete preferred toolchains must meet the language minimum; `default` uses `go`; patch directives retain exact-version behavior. An older language minimum is valid when a supported preferred compiler is supplied. Relative action paths use `GITHUB_WORKSPACE`; standalone paths use the current directory. Checkout must precede file-based setup.
-
-Targeted local version-file and CLI tests passed on Windows with Go 1.27.0, and launcher tests passed on Node 26. The sandbox initially denied loopback fixture access and working-directory restoration; targeted tests passed outside it. Final source including the feature passed `go test ./... -count=1` and `go vet ./...` on both Go 1.26.4 and the pinned Go 1.27.1 compiler. Formatting and `git diff --check` passed. All eight launcher/benchmark-bridge/runtime-locator Node tests passed on Node 26.3.0. Node 24 runner behavior and hosted file-input integration remain unverified until GitHub execution is authorized.
-
-The pre-push review also verified all three official action SHA pins against their upstream release tags. Actionlint 1.7.12 passed the refreshed workflows with no rule exclusions (optional shellcheck/pyflakes disabled). All six binaries and bundled/launcher ZIPs built twice with Go 1.27.1 with matching hashes. The rebuilt Windows distribution passed the combined-cache main/post/Node-alias lifecycle fixture and Git Bash offline reuse with the real Go 1.26.4 smoke workload. The fixture uses an explicit version; file-input parsing and launcher forwarding have separate local tests and prepared hosted integration steps. Generated candidates are in `dist` and `.cache/prepush-artifacts`, with the reproducibility copy in `.cache/prepush-dist-repro` and `.cache/prepush-artifacts-repro`. They contain uncommitted source and are not an immutable published preview; `SOURCE_REVISION` must identify the eventual committed source before publication.
-
-## Self-contained performance tranche (2026-11-08)
-
-`cache-overlap` defaults to true when caching is enabled. The installer announces the exact selected version before cold installation; a joined/cancellable worker fingerprints dependencies and prefetches cache data without guessing Go cache paths. The selected installed executable supplies paths, and complete archive validation precedes merge. Disabled overlap retains sequential single-archive staging. Cache-off creates no prefetch worker.
-
-`cache-storage: chunked` uses content-defined 1-8 MiB raw-tar chunks, independently gzip-compressed or plain. SHA-256 identifies stored chunk bytes within the same job/scope/platform/Go/layout/compression namespace. Exact finalized chunk lookups permit reuse; reservations alone do not. A fresh manifest is uploaded only after all chunks exist. Manifest count/size, chunk sizes, total encoded bytes and raw tar bytes are bounded. Missing referenced entries are misses; corrupt transfers never merge the affected archive. Tokens and signed URLs are not persisted. This uses the existing GitHub cache backend and no extra consumer infrastructure.
-
-The format still repacks the complete cache into a private uncompressed temporary archive and uses bounded chunk buffers. It does not implement incremental filesystem scanning, cross-job or cross-platform reuse, remote per-object access, or chunk garbage collection; GitHub handles entry eviction. Independently evicted chunks can invalidate a manifest. Previously generated prepush candidates predate this tranche. Refreshed candidates are `dist` and `.cache/performance-artifacts`, with reproducibility copies in `.cache/performance-dist-repro` and `.cache/performance-artifacts-repro`; they remain uncommitted candidates, not published immutable previews.
-
-Local correctness checks for this tranche passed with pinned Go 1.27.1: full tests/vet, formatting, eight Node 26.3.0 tests, and actionlint 1.7.12 (optional shellcheck/pyflakes disabled). New tests cover version notification before installation, rootless prefetch, cancellation/join/cleanup, cache-off/opt-out, gzip/plain reuse after an insertion, corrupt/evicted chunks, manifest bounds, and committed/uncommitted upload races. The rebuilt Windows packaged lifecycle passed for both archive and chunked storage against the loopback fixture, including alias restore/post, real Go 1.26.4 smoke workload and Bash offline cache-off reuse. The chunked second save reused all forty fixture chunks and uploaded the fresh manifest; this is a correctness observation, not a performance comparison. Final all-six-platform packages were built twice with matching binary and archive hashes. No hosted runs, commits, pushes, services or third-party consumer action dependencies were added.
-
-## Bounded parallel chunks (2026-11-08)
-
-The next user follow-up authorized parallel chunk processing without extra infrastructure. `cache-chunk-concurrency` defaults to 4 and accepts 1-16; it is exposed through root/alias metadata, CLI, the existing helper/bridge and manual cache workflows. Save uses an unbuffered producer and bounded workers for compression/hash/lookup/upload. Restore validates all references first, groups identical chunks, and writes decoded bytes at predetermined offsets in one private archive; full existing archive validation still precedes the affected-cache merge. Duplicate hashes must have identical declared sizes. Metrics are reduced after join, manifests require all committed chunks, and failures/cancellation cancel and join the workers. Chunk clients preserve supplied HTTP/security settings but use one blob block worker to avoid nested concurrency multiplication.
-
-Complete save packing and the raw temporary archive remain intentionally: unchanged restored modules can still skip all chunk lookups. Payload buffers are bounded by worker count plus the producer's rolling/pending buffers; allow roughly 32 MiB per worker plus 16 MiB producer buffers, excluding gzip/runtime overhead. There is no unbounded restore reorder buffer. Correctness coverage includes synchronized 1-versus-3 worker bounds, out-of-order gzip reconstruction, parent cancellation/failure draining, duplicate transfer suppression, inconsistent duplicate metadata, invalid worker inputs, unchanged-module zero-request behavior and the existing corrupt/evicted chunk no-write cases. Final pinned-Go 1.27.1 full tests/vet, formatting/whitespace, all eight Node 26.3.0 tests and actionlint passed. Both regenerated Windows packaged archive and chunked main/post/alias/Bash lifecycles passed against the existing local fixture with the real Go 1.26.4 smoke workload. Final all-six builds were repeated with matching binary manifests and bundled/launcher ZIP hashes. Latest candidates are `dist` and `.cache/parallel-artifacts`; comparison copies are `.cache/parallel-dist-repro` and `.cache/parallel-artifacts-repro`. Earlier performance/prepush artifact directories describe earlier source. The race detector was not run because no C compiler was available on PATH; deterministic synchronized concurrency/cancellation tests passed. These are local correctness observations, not hosted behavior or performance results. Source remains uncommitted and unpublished, and eventual preview provenance must identify the committed source.
-
-## Preview and first consumer smoke (2026-11-09)
-
-The user authorized a fresh bundled preview and one Linux consumer smoke dispatch. The manual consumer workflow now selects one runner (ubuntu-24.04 by default) instead of starting the six-platform matrix, limiting PoC runner usage. Publish the six-binary distribution with the exact source SHA in SOURCE_REVISION and executable Unix modes, then dispatch consumer.yml once with that distribution SHA and expect-hit=false. No warm-repeat, broader platform, benchmark, Exasol, visibility or automatic-trigger changes are authorized by this step. Record the completed run below after observing its result.
-
-The user subsequently authorized the warm-cache repeat (step 3). Initial Linux run [42533862372](https://github.com/nicoheidtke/setup-go-better/actions/runs/42533862372) verified binary checksums and installed Go 1.26.0, then failed strict cache lookup with HTTP 400 before the package workload or post-save. Review found service-version hashes were truncated to 24 hex characters; the toolkit emits full 64-character SHA-256 versions. The local fix preserves full service versions while keeping short key namespaces, adds a protocol-shape fixture check, and reports the operation/allowlisted invalid_argument code without exposing remote messages. The corrected cold and warm hosted runs below confirmed the fix.
-
-### Completed Linux consumer smoke
-
-Preview `13f611572c059e38af11315888f7add1566bbb2e` on `codex/action-preview` records source `d1187a834d030b7e53cb8e8b270831da4aaa1a9c` in `SOURCE_REVISION`. All six binary checksums and Unix executable modes were checked before publication; only Linux/amd64 was executed in these hosted checks. The source fix passed full pinned-Go 1.27.1 tests/vet and both local packaged Windows storage-mode fixtures before publication.
-
-| Run | Result | Evidence |
-| --- | --- | --- |
-| [42533862372](https://github.com/nicoheidtke/setup-go-better/actions/runs/42533862372) | Initial preview failed | Installer succeeded; strict cache lookup HTTP 400 exposed the truncated version digest |
-| [42534290287](https://github.com/nicoheidtke/setup-go-better/actions/runs/42534290287) | Corrected cold run passed | go.mod selected Go 1.26.0; pinned package tests passed; automatic post saved module and build archives |
-| [42534400908](https://github.com/nicoheidtke/setup-go-better/actions/runs/42534400908) | Warm repeat passed | Same preview/runner/scope, `expect-hit=true`; both archives restored; package tests and automatic post passed |
-
-Configuration: one ubuntu-24.04 job per dispatch, root Node 24 action, strict restore-save, split layout, gzip, whole-archive storage, overlap enabled. First save uploaded 95,820 module bytes and 17,263,893 build bytes. The repeat restored those two archives, skipped unchanged module upload and saved a fresh 17,339,078-byte build archive. These are cache payload/correctness observations, not performance comparisons or billing estimates. No other platforms, benchmark workflows, Exasol runs or visibility settings were exercised. All eight workflows remain manual-only, and the authorized cold/warm cycle is complete.
+Source, preview branch, and annotated tag were published atomically. Commit IDs identify immutable content; the release reported `immutable: false`, so tag/assets are not claimed locked. No hosted build attestation was generated. Release-tool API recovery was tested with mocks rather than a second live publication.

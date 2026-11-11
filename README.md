@@ -30,7 +30,7 @@ jobs:
 
 You can also set `go-version: '1.26.x'` or an exact patch. Minor selectors prefer an installed matching patch; `check-latest: true` requests the latest available patch. Version files support `go.mod` and `go.work`.
 
-For matrices, include the differing dimensions in `cache-scope`. Use `cache: restore` to avoid post-job uploads. See the [usage guide and full input reference](docs/USAGE.md) for examples, private-repository access requirements and standalone use. Pin a bundled distribution; source-only commits cannot run as an action.
+For matrices, include the differing dimensions in `cache-scope`. Use `cache: restore` to avoid post-job uploads. See the [usage guide and full input reference](docs/USAGE.md) for examples and standalone use. Pin a bundled distribution; source-only commits cannot run as an action.
 
 ## Compared with actions/setup-go
 
@@ -38,8 +38,8 @@ GitHub's official action offers broader version syntax and familiar defaults. Th
 
 ## Documentation
 
-- **Using the action:** [usage and reference](docs/USAGE.md), [comparison](docs/COMPARISON.md), [action metadata](action.yml).
-- **How it works:** [architecture and resource behavior](docs/ARCHITECTURE.md), [cache service protocol](internal/cachebackend/PROTOCOL.md).
-- **Building and contributing:** [contribution and support guide](CONTRIBUTING.md), [development and releases](docs/DEVELOPMENT.md), [roadmap](ROADMAP.md), [implementation plan](docs/IMPLEMENTATION_PLAN.md), [agent handoff](AGENTS.md).
-- **Evidence and measurement:** [benchmark methodology](docs/BENCHMARKS.md), [initial validation](docs/validation-2026-09-22.md), [Exasol cache investigation](docs/investigation-2026-11-10.md).
-- **Security and license:** [security policy](SECURITY.md), [permissions and cache trust](docs/SECURITY_MODEL.md), [MIT license](LICENSE).
+- [Usage and input reference](docs/USAGE.md)
+- [Comparison with setup-go](docs/COMPARISON.md)
+- [Architecture](docs/ARCHITECTURE.md) and [security model](docs/SECURITY_MODEL.md)
+- [Contributing](CONTRIBUTING.md), [development](docs/DEVELOPMENT.md), and [releases](docs/RELEASES.md)
+- [Security policy](SECURITY.md), [roadmap](ROADMAP.md), and [MIT license](LICENSE)

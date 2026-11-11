@@ -56,6 +56,6 @@ test('metadata uses unique per-action job-status policy and both launchers are p
   assert.match(metadata, /  summary:\r?\n    description: [^\r\n]+\r?\n    default: 'true'/);
   assert.ok(metadata.includes("post-if: \"!cancelled() && (success() || env[format('SETUP_GO_BETTER_SAVE_ON_FAILURE_{0}', github.action)] == 'true')\""));
   assert.ok(!metadata.includes('inputs.cache-save-on-failure'));
-  const packaging = fs.readFileSync(path.join(__dirname, 'cmd/package/main.go'), 'utf8');
+  const packaging = fs.readFileSync(path.join(__dirname, 'cmd/package/manifest.go'), 'utf8');
   for (const file of ['launcher.cjs', 'launch.cjs', 'post.cjs', 'experimental/node/post.cjs', 'experimental/composite/action.yml']) assert.ok(packaging.includes(`"${file}"`));
 });

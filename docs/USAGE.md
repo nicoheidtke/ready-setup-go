@@ -1,27 +1,10 @@
 # Action usage and reference
 
-Return to the [project overview](../README.md), see the [comparison with setup-go](COMPARISON.md), or read [architecture and resource behavior](ARCHITECTURE.md). For permissions, private-action acquisition and cache trust, see the [security model](SECURITY_MODEL.md).
+Return to the [project overview](../README.md), see the [comparison with setup-go](COMPARISON.md), or read [architecture and resource behavior](ARCHITECTURE.md). For permissions and cache trust, see the [security model](SECURITY_MODEL.md).
 
 ## Usage
 
 Examples pin bundled preview `952566112acde233b6b762a78ebbceb743605f9a` (`v0.0.0-preview.20261111`), which includes all six native executables. Always pin a **bundled distribution commit** supporting the inputs you use; source-only revisions cannot run directly as an action.
-
-If the action repository is private, the workflow must have permission to access it. Where direct private-action sharing is unavailable, check out the bundled revision using a token with read access to that repository, then invoke its local path. The token is for acquisition, not a setup-go-better input:
-
-```yaml
-- uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-- uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-  with:
-    repository: nicoheidtke/setup-go-better
-    ref: 952566112acde233b6b762a78ebbceb743605f9a
-    token: ${{ secrets.SETUP_GO_BETTER_TOKEN }}
-    path: .github/private-actions/setup-go-better
-    persist-credentials: false
-- uses: ./.github/private-actions/setup-go-better
-  with:
-    go-version-file: go.mod
-    cache: restore-save
-```
 
 ```yaml
 permissions:
@@ -116,7 +99,7 @@ Cache errors warn by default. Unavailable runtime credentials, denied writes, an
 
 ## Outputs and environment
 
-When GitHub provides `GITHUB_STEP_SUMMARY`, the action appends toolchain and cache-restore tables to its setup-step summary. Automatic saves append a separate post-job summary, because completed step summaries cannot be edited later. Tables include status, skip/error reasons, transferred payload and phase durations; overlapping toolchain/cache work is not added into a synthetic setup total. Summaries omit full keys and paths, escape text and redact tokens/URLs. Missing or unwritable summary files never fail setup or caching. Use `summary: 'false'` to disable summaries, including the later post hook; the installer-only Bash experiment supports the same input. Standalone `--summary=false` is accepted, but summaries are always silent outside GitHub Actions.
+With `GITHUB_STEP_SUMMARY`, setup appends toolchain/restore results and post appends a separate save summary. Set `summary: 'false'` to disable both. Summary file failures are nonfatal. Summaries escape text, redact credentials/URLs, and omit full keys and paths.
 
 | Output | Value |
 | --- | --- |
@@ -130,17 +113,15 @@ When GitHub provides `GITHUB_STEP_SUMMARY`, the action appends toolchain and cac
 
 Cache outputs are written when caching is enabled. The action sets `GOROOT` and adds its `bin` directory to subsequent steps' `PATH`. It leaves `GOTOOLCHAIN` unchanged. Set `GOTOOLCHAIN: local` in your job if Go must use the selected installation without automatic toolchain switching.
 
-Normal logs show concise per-snapshot `HIT`, `MISS`, `SKIP`, `SAVED` or `ERROR` results, readable transferred sizes and elapsed times. A partial restore is reported explicitly; `cache-hit` remains true only when every requested snapshot restores successfully. Matching dependencies and dependency-compatible fallback snapshots are distinguished. Missing or evicted chunks are a clean miss, and unchanged module content, empty caches, restore-only mode and runner write restrictions have explicit skip explanations. Installation results identify whether the toolchain was reused or downloaded.
+Normal logs show `HIT`, `MISS`, `SKIP`, `SAVED`, or `ERROR`, transferred payload, and elapsed time. Partial restores and dependency-compatible fallback are identified. `cache-hit` is true only when every requested snapshot restores. Ordinary misses/skips are informational; operational failures annotate warnings, or errors in strict mode. Diagnostics escape untrusted controls and redact known tokens and HTTP(S) URLs.
 
-Operational cache failures create warning annotations by default; `cache-strict: true` makes them fatal errors. Setup and post-save failures use error annotations with operation names and next steps. Ordinary misses and skips remain informational. Diagnostic text strips untrusted terminal controls and command-like line breaks, and redacts runtime/GitHub tokens and HTTP(S) URLs. Native startup failures explain how to select a bundled distribution and check platform/executable support. Standalone runs use plain warnings/errors on stderr.
+Status colors are enabled in GitHub Actions. Set a nonempty `NO_COLOR` to disable them. Standalone diagnostics are plain. Long operations report actual byte/file progress at most once every two seconds as work advances; unknown totals have no percentage and stalled calls create no artificial activity.
 
-GitHub Actions logs color successful result labels green and failed result labels red; native warning annotations use GitHub's own styling. Ordinary cache misses and skips remain neutral. Set the `NO_COLOR` environment variable to any nonempty value (including `0`) to disable ANSI color. Standalone diagnostics are plain by default. Colors affect labels only, and JSON reports remain uncolored.
+Enable [GitHub step debug logging](https://docs.github.com/en/actions/how-tos/monitor-workflows/enable-debug-logging) with `ACTIONS_STEP_DEBUG: true` to receive native diagnostics through `RUNNER_DEBUG=1`. Debug includes full restore/save JSON and snapshot keys. `ACTIONS_RUNNER_DEBUG` controls a separate runner archive. Standalone use can request `--json`.
 
-Long operations report progress at most once every two seconds as work advances, using newline-separated messages that remain readable in downloaded logs. Toolchain and cache downloads count consumed payload bytes; uploads count successfully acknowledged payload PUTs, excluding block-list requests. Cache ranges and chunks share one counter per snapshot, and reused chunks are excluded from upload progress. Whole-archive and toolchain percentages appear only when the transfer total is known; chunked transfers and published-file counts have no percentage. Existing local files are retained and do not count as published. Short operations stay quiet, failures stop progress without claiming completion, and standalone execution emits no progress. A stalled network or filesystem call does not generate artificial activity messages.
+`cache-report` retains preparation, lookup, transfer, archive times, payload/file counts, keys, matches, skips, and errors. Chunk reports include reuse counts/bytes. `match_type` distinguishes exact/compatible dependency matches; only `hit` establishes successful restoration. `restore_reason` explains misses/errors. JSON reports contain full paths/keys; review them before sharing, as described in the [security model](SECURITY_MODEL.md).
 
-For detailed diagnostics, enable [GitHub step debug logging](https://docs.github.com/en/actions/how-tos/monitor-workflows/enable-debug-logging) with the repository secret or variable `ACTIONS_STEP_DEBUG: true`. GitHub then supplies `RUNNER_DEBUG=1`, which this action uses to enable native `::debug::` messages. They include the selected toolchain result, effective cache settings and full restore/save report JSON, including snapshot keys. Configuration diagnostics omit scope and input paths; tokens and HTTP(S) URLs are redacted from debug text. `ACTIONS_RUNNER_DEBUG` controls GitHub's separate runner diagnostic archive and does not enable these action messages. Standalone runs remain quiet; use `--json` for local installer diagnostics.
-
-Chunked reports also record chunk count, reused chunk count and reused compressed bytes. Cache JSON reports retain preparation, lookup, transfer and archive processing times, transferred bytes, archive file/payload counts, full keys, matches, skips and errors. Additive per-snapshot `match_type` values are `dependency-exact` or `dependency-compatible` when lookup found a snapshot; this does not imply successful validation/publication (`hit` records that). `restore_reason` explains misses/errors with `no-match`, `missing-chunk`, `access-denied` or `restore-failed`. Post-job save runs after regular workflow steps, so an earlier upload-artifact step cannot collect a report that has not yet been written. Ordinary post-step logs show concise save results; step debug logging adds full JSON diagnostics, and `cache-report` retains full JSON files independently of debug mode.
+Post saves occur after regular steps. An earlier artifact-upload step cannot collect `<cache-report>.post.json`; use completed debug logs or a later collector. See [measurement boundaries](BENCHMARKS.md#metric-boundaries) before interpreting phase timings or bytes.
 
 ## Installation and platforms
 

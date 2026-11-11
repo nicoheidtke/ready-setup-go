@@ -1,175 +1,60 @@
-# Benchmark methodology
+# Performance measurement
 
-Private restore staging remembers successfully prepared directories within one invocation, avoiding repeated parent-directory creation checks. Uncompressed packing uses a 256 KiB output buffer; this also applies to the raw archive used by chunked storage. Compare complete staging/restore and complete packing on identical corpora. Destination write counts diagnose syscall coalescing but do not establish elapsed-time or hosted speedups. Raw buffering preserves encoded bytes, size bounds and final-flush error reporting; gzip retains its independent existing buffers.
+Measure complete workflow cost: acquisition, setup, restore, workload, and post saves. Separate cold/warm cases. Cross-compilation establishes neither native behavior nor performance. [Correctness validation](DEVELOPMENT.md#validation) precedes measurement.
 
-The local publication/packing tranche adds independent `cache-restore-concurrency` and `cache-compression-concurrency` controls, each defaulting to four and accepting 1-16. Publication concurrency affects the validated-file merge phase only; staging/validation and directory preparation stay ordered. Whole-archive gzip uses ordered fixed 4 MiB members, so worker counts 1 and 4 produce identical encoded bytes. Compare with both the original single-member gzip baseline and a one-worker fixed-member pipeline; record encoded-size differences, CPU limits and buffer bounds. These settings do not multiply chunk-transfer workers and do not change cache compatibility keys.
+## Comparison rules
 
-For local Windows publication measurements, alternate worker settings 1/4 on the same synthetic fixture and record both complete restore and merge-only timing. For packing, use representative Go build-cache objects, compare full packing and isolated compression where practical, and include a restricted GOMAXPROCS=2 case. Local samples diagnose implementation costs; they do not replace the hosted paired workload matrix or establish workflow speedups.
+- Fix action/compiler/workload/dependency revisions, runner image, OS/architecture, and cache settings. Record baseline revisions and their own configuration.
+- Collect at least 20 successful paired samples per comparison, alternating order. Retain failures and raw observations; label smaller groups incomplete. Report paired differences, median, and p95.
+- Cover small modules, parallel build/test/lint jobs, and monorepos; include cold, unchanged, source-change, dependency-change, and Go-upgrade scenarios.
+- Isolate sample namespaces and reset local caches. Seed outside measurement. Go-upgrade seeds must use a different exact compiler; dependency mutations must change the fingerprint.
+- Record requests, bytes, CPU, and temporary disk where measured. More workers, fewer uploads, or smaller archives alone establish no speedup.
 
-The 2026-11-10 preview work adds independent `cache-download-concurrency` (default 4, range 1-32) and `cache-download-chunk-bytes` (default 32 MiB). Concurrency 1 retains the single-GET path. The first range response establishes object size; a server returning a full 200 response is consumed directly. Chunked storage retains its separate worker bound. Compare request count, bytes and elapsed download time rather than assuming more workers improve all workloads.
+Page caches, module proxies, shared-runner load, and CDN state remain uncontrolled. Repeat close/suspicious outcomes and disclose changing latest-patch selections. Preserve baseline warmup and tool-cache costs. Never average unrelated scenarios into one speedup.
 
-Split module saves now fingerprint paths, permissions and every file's bytes before packing, ignoring mtimes. Reports expose `module_check_ms` and `save_reason`; unchanged modules skip archive creation/compression and upload. Changed modules pay the fingerprint pass as well as packing. This changes the cost boundary from the older repack-and-compare implementation described in historical records.
+## Tools
 
-Restore reports split `archive_ms` into `archive_stage_ms`, `archive_preflight_ms`, `archive_merge_ms` and `archive_cleanup_ms`, with published/linked file counts and copied payload bytes. These are native wall-time intervals, not independent CPU measurements. Destination-volume private staging and no-replace hardlink publication can avoid the second payload copy; unsupported filesystems retain the exclusive-copy path. Measure actual counters and timing on each runner before making a speed claim.
+These commands remain in use by the manual workflows below. They are development tools, not additional consumer setup steps. Workflows consume runner time/cache storage; command help provides full options. Store raw observations in ignored directories such as `.cache/` or `benchmark-results/`.
 
-The [2026-11-10 Exasol investigation](investigation-2026-11-10.md) records initial observational comparisons from user-supplied cold/warm consumer runs and an existing upstream run. Different workload/dependency revisions and one sample per case prevent treating these as controlled benchmark results. Warm aggregate job time and pipeline critical-path time moved in different directions; preserve both measures in future comparisons.
-
-Measure total cost: action acquisition, process launch, version resolution, toolchain transfer, extraction, and the workload that follows. Report cold and warm cases separately. Never equate cross-compilation with platform validation.
-
-## Installer and launcher comparison
-
-`cmd/benchmark` launches the identical packaged installer through Bash and the dependency-free Node adapter. It requires at least 20 samples **per launcher**, reverses the pair order on alternate samples, and writes all observations plus median and nearest-rank p95.
-
-```text
-go run ./cmd/benchmark --dist dist --version 1.26.0 --scenario installed-exact --samples 20 --out installed-exact.json
-```
-
-Scenarios:
-
-| Scenario | Preparation | Measured operation |
-| --- | --- | --- |
-| `installed-exact` | Seed the exact version outside measurement | Reuse exact version with HTTP(S) routed to a closed local proxy |
-| `installed-minor` | Seed the exact version outside measurement | Resolve its minor selector locally with the same network block |
-| `latest-minor` | Seed the exact version outside measurement | Check official release metadata for every sample |
-| `cold` | Give every sample a fresh installation directory and empty runner-cache setting | Resolve, download, verify, extract, and publish |
-
-Warm cases are additionally checked by unit tests with a transport that rejects and counts every request. Proxy blocking in a workflow is an extra integration check, not an OS-level network sandbox.
-
-Supply `--node` with the runner's Node 24 executable for a representative comparison; the default `node` on PATH may have a different version. `--shell` selects Bash. The JSON report records runtime versions, OS/architecture, runner image variables, source revision, and per-sample selected Go versions.
-
-The Bash process models the composite step shell and uses `exec` for the installer. The Node process launches the same executable. Full GitHub runner dispatch overhead is outside this subprocess comparison.
-
-## Metric definitions
-
-- `resolution_ms`: local discovery plus any official metadata request and parsing.
-- `download_ms`: archive request/header latency plus elapsed time spent reading the response body.
-- `extraction_ms`: the archive processing interval excluding those response-body reads; ZIP spooling, hashing, and filesystem work are included.
-- `total_ms`: native setup call, including publication and cleanup, excluding CLI startup and GitHub environment export.
-- `launcher_and_export_ms`: subprocess wall time minus native setup time. This also includes CLI initialization, JSON serialization and writing, and environment export; it is not a pure Node/Bash startup measurement.
-- `metadata_bytes` / `archive_bytes`: received payload bytes, excluding HTTP/TLS overhead.
-- `peak_temporary_bytes`: peak logical file payload for staging/extraction, the completion marker, and ZIP spooling. It excludes filesystem metadata, block rounding, the installer executable, and already installed toolchains.
-
-Tar download and extraction overlap. The reported partition attributes body-read time to download; it does not pretend there are two independent sequential phases. Instrumentation itself has overhead and should be considered when interpreting small differences.
-
-## Current action baselines
-
-The manually dispatched **Manual runtime benchmarks** workflow runs on a selected hosted platform. It resolves the `actions/setup-go` v7.0.0 release and `WillAbides/setup-go-faster` main commits once, checks out those exact revisions, and invokes their local actions alongside the packaged implementation. Update the official comparison release deliberately when modernizing action dependencies; retain its resolved SHA in the result metadata.
-
-Each scenario has 20 fresh jobs. Execution order reverses between samples. Caching is disabled in `actions/setup-go`; `setup-go-faster` does not manage build/module cache snapshots. Minor selectors and latest checks are mapped to each action's corresponding inputs.
-
-Cold jobs give each action an isolated tool-cache and temporary path. Warm jobs seed equivalent private tool caches outside measured steps. Review the selected `setup-go-faster` implementation before interpreting Windows data: it may select a different installation volume or local discovery path. Record differences rather than silently treating unequal paths as equivalent.
-
-Raw GitHub job-step observations are retrieved using the jobs API. Median and p95 summaries label groups with fewer than 20 successful observations as incomplete. Failed samples remain visible in the report; do not discard them to improve a result.
-
-API step timestamps have coarse resolution. The runner's **Set up job** step combines action acquisition and other preparation, so it is recorded separately but cannot be attributed to a specific action. The local-action baseline primarily compares execution, not each upstream repository's acquisition cost.
-
-Metadata artifacts record exact action revisions and runner image details. No measurement workflow runs automatically on a normal push or pull request.
-
-## Bundled versus matching-binary acquisition
-
-The packager creates a complete action ZIP, a launcher-only ZIP, and each native executable. Host these as immutable public HTTPS assets, then supply their URLs and SHA-256 values to **Manual action acquisition experiment** or `cmd/acquisition`.
-
-For each of at least 20 paired samples, compare:
-
-1. Download, verify, and unpack the complete bundle.
-2. Download, verify, and unpack the launcher-only ZIP, then download and verify the matching executable.
-
-Alternate ordering. Record received bytes, transfer/checksum time, ZIP extraction time, combined time, and peak logical file bytes. Both paths include checksum verification. The second path includes both network requests.
-
-This is a controlled acquisition experiment, not an exact emulation of GitHub's repository archive CDN or preparation service. CDN cache state, latency, and hosting location affect results; preserve URLs/checksums and runner metadata in the report. Repeat on each target platform.
-
-## Interpreting results
-
-Compare paired differences, medians, and p95 together. Investigate regressions; record overlapping or coarse results as inconclusive. Repeat suspicious outcomes before changing the default launcher or distribution format. Latest-patch experiments must disclose if the selected version changes during the run.
-
-Do not publish a single speedup number averaged across cold installations, installed exact versions, and latest-version checks. They represent different user workloads.
-
-For cache measurements, include restore, compile/test, archive-only filtering/packing, and upload in the measured job. Extend workloads to a small module, parallel build/test/lint jobs, and a multi-module monorepo. Installer speed alone cannot establish cache efficiency.
-
-## Primary real-world workload
-
-Use [exasol/exasol-personal](https://github.com/exasol/exasol-personal) as the primary acceptance project. The initial pinned revision is `54b7e1a7454f49d821102bcab5bfce2c7747f8c6`; record any revision change alongside results. First run the small `testdata/packages` workload using pinned `github.com/google/uuid` and `golang.org/x/sync` versions, with normal Go checksum verification.
-
-`.github/workflows/workload.yml` validates separate Exasol Go build, unit-test, and lint jobs using the packaged installer. It follows the upstream generation mode for tests (`SKIP_EMBED=true`), retains the required `containers_image_openpgp` tag, and runs Linux unit tests with the race detector. Build jobs use CGO disabled and the upstream no-inlining setting. Generated placeholder-resource binaries are compilation checks, not distributable Exasol releases. Python integration tests and deployment tests are separate acceptance stages; cloud/VM provisioning is not part of this Go workload.
-
-The original installer-only workload is a correctness gate, not a performance comparison: packaging uses a bootstrap Go installation and there is only one observation per job. Cache correctness and cache measurements use separate workflow definitions. Its module/build cache directories are isolated from the bootstrap and package smoke test.
-
-For the later cache comparison, preserve Exasol's actual parallel build/test/lint split and account for its current setup action's module and tool warmup (`go mod download`, golangci-lint, tflint and plugin initialization). Measure the complete job before removing or changing that warmup. Include tool caches and resource-generation costs explicitly. Compare cold, unchanged, source-change, dependency-change, and Go-upgrade runs at fixed revisions; avoid drawing cache conclusions from the installer timer or a single local run.
-
-
-## Cache correctness and experiment matrix
-
-The local cache implementation and workflow definitions are preparation for hosted measurements. The user authorized source commits/pushes on 2026-11-08 after all workflows were made manual-only to avoid PoC costs. Do not dispatch/rerun workflows or restore automatic triggers without authorization. Publishing a replacement bundled distribution remains a separate step. No cache, launcher or acquisition speedup has been established.
-
-Correctness must precede performance collection. The gate covers the real root Node action and its automatic post hook, subsequent restoration of saved files, isolated module/build roots, exact selected Go version and dependency compatibility, distinct job/matrix scopes, failed/cancelled jobs, missing/denied credentials, malformed downloads, immutable-key races and branch/default-branch access. Unit fixtures exercise protocol and archive failures locally; they do not prove service compatibility or native Unix behavior.
-
-Use the same selected Go toolchain, checkout, cache paths and workload commands for each paired comparison. Capture exact action/compiler/workload revisions, runner image, OS/architecture, compression/layout and transfer settings. Restore-only, cache-off and restore-save are explicit modes. Baselines must retain their own cache inputs/settings in the record; an installer-only run cannot demonstrate cache efficiency.
-
-| Dimension | Required cases |
+| Tool / workflow | Purpose and boundary |
 | --- | --- |
-| Workload | Small pinned dependency smoke module; actual parallel build/test/lint jobs; multi-module monorepo; Exasol build/test/lint at the recorded revision |
-| Cache state | Cold, unchanged, source change, dependency change, exact Go upgrade |
-| Storage layout | Split module/build archives and combined archive |
-| Compression | gzip and none |
-| Transfer | Explicit upload worker and chunk size values; record requests and payload where instrumented |
-| Retention | No build filtering baseline; explicit conservative age cutoffs only after Go mtime behavior is validated |
-| Lifecycle | Success, restore-only, missing credentials/write denial, failed/cancelled job behavior |
-| Platform | Native hosted Linux/macOS/Windows, amd64/arm64; unsupported or unavailable runner cases remain visible |
-
-Collect at least 20 successful paired samples for each comparison and reverse pair order on alternate samples. A single success is a correctness observation. Include failures rather than silently discarding them; groups below the required sample count remain incomplete. Isolate pair/sample namespaces so earlier measurements cannot warm later cold cases. Seed warm/change scenarios outside the measured interval, recording seed settings and selected Go version. Go-upgrade cases must actually seed with a different exact version; changing only a label is invalid.
-
-The initial cache backend is GitHub cache v2; it is a measurement candidate, not an architectural performance conclusion. Split snapshots add lookup/upload operations but can avoid unchanged module uploads. Unchanged-module detection still packs and hashes the local module tree, so include its CPU/disk time even when transferred bytes are zero. Compression similarly trades transfer against local work; no default should be called optimal before representative measurements.
-
-Dependency changes first try the exact fingerprint and then a dependency-compatible prefix within the same scope, OS/architecture, Go version, layout and compression. Source changes need fresh build snapshots even when dependency files do not change. Record the returned key and archive kind; `cache-hit` means every requested archive restored and is not a promise that the entire workload avoids compilation.
-
-## Cache metric boundaries
-
-GitHub log progress is operational feedback rather than a new benchmark metric: downloads count consumed payload, upload progress counts acknowledged data PUTs, and publication counts successfully published files. Concurrent ranges/chunks share a per-snapshot counter; reused chunks and upload block-list requests are excluded. Unknown totals have no percentage. Bounded request retries are included in phase elapsed times; successful-payload byte reports and acknowledged-upload progress do not include bytes sent by failed upload attempts or discarded HTTP error responses. These counters do not measure TLS overhead, remote durability before finalization or whole-workload speedup. Progress uses throttled calls without background timers; its elapsed-time overhead has not been measured separately.
-
-Cache reports distinguish `preparation_ms` (selected-Go cache path discovery and dependency fingerprinting), phase `total_ms`, per-archive `lookup_ms`, `transfer_ms`, `archive_ms`, `transferred_bytes`, `archive_files` and `archive_payload_bytes`. Restore total excludes preparation; compute the full setup cache contribution by including both. Transfer time includes the backend operation rather than a pure network-throughput estimate. Archive processing includes validation, decompression/staging/merge on restore and walking/filtering/packing/hash work on save.
-
-Transferred bytes count HTTP payload rather than HTTP/TLS overhead. Archive payload counts regular-file content, including entries skipped because a local file already exists. The action's maximum independently bounds compressed transfer and expanded tar; it does not measure peak disk allocation. Restore temporarily retains a downloaded archive plus staged payload, while save temporarily retains a packed archive. Filesystem block rounding, metadata, signed-service storage and full peak temporary bytes need separate instrumentation before publishing resource totals.
-
-Report paired total workload cost as restore preparation + restore + workload + post save, with medians/p95 and individual observations. Action acquisition and runner scheduling remain additional costs; the acquisition experiment and job-step API timestamps have the limitations described above. Do not subtract coarse API timings to manufacture precise cache throughput.
-
-The real action saves in its automatic post hook. A regular upload-artifact step runs before post and can collect the restore report only. The save report is written later at `<cache-report>.post.json`; ordinary post logs show concise operational results rather than full JSON. Enable GitHub step debug logging (`ACTIONS_STEP_DEBUG=true`, exposed to the action as `RUNNER_DEBUG=1`) before a future run to include full restore/save JSON in native debug messages. Debug serialization is skipped when disabled; signed URLs and known runtime tokens are redacted in debug text. Historical published previews emitted full cache JSON in ordinary post logs, which remains the evidence source for their already-recorded runs. A later collector may inspect completed jobs/logs; an explicit-lifecycle benchmark harness can instead write restore and save metrics before its artifact upload, but must identify that it does not measure GitHub post dispatch overhead. Never describe a restore-only artifact as complete cache lifecycle evidence.
-
-## Prepared cache tools and workflows
-
-`cache-validation.yml` defines **Manual cache lifecycle validation**. After hosted execution is authorized, run it once to exercise restore, the pinned package workload and the real automatic post-save. Run a second dispatch with the same runner, Go version, layout, compression and scope, setting `expect-hit` to true and optionally requiring the reviewed seed keys with `expected-match`. Job identity remains the same across dispatches, so the second run can validate the previous snapshot without weakening workload isolation. `expect-miss` requires a clean miss rather than a partial restore. The provenance artifact records intended fresh keys before post; successful completed post evidence is required before treating those as saved seed keys.
-
-Additional manual controls prepare restore-only mode, intentional workload failure and a manual-cancellation window. Failure/cancellation conclusions and post-save absence or success must be inspected independently; an expired cancellation window fails as inconclusive. [Lifecycle procedures](LIFECYCLE_VALIDATION.md) define controlled seed/warm, branch isolation, policy and concurrent-writer cases and explain why manual dispatch cannot validate fork pull-request tokens. The six-native integration workflow also prepares archive/chunked main/post fixtures. All are correctness definitions, not executed hosted results or benchmark samples; further execution remains separately authorized.
-
-`cache-benchmark.yml` defines **Manual cache benchmarks**, with runner, workload, scenario, samples, exact target/seed Go versions, layout, compression, candidate mode, exact dependency mutation, maximum bytes, upload concurrency, upload chunk bytes and optional build-age cutoff inputs. On Linux, workload `exasol` creates separate parallel build/test/lint jobs; on Windows it selects build only. Exasol is rejected on macOS, where `all` selects the small module and generated multi-module workspace. On supported platforms, `all` also includes the available Exasol jobs. The default minimum is 20 pairs. For `go-upgrade`, explicitly select different exact seed and target versions; the helper rejects equal versions.
-
-The workflow invokes `.github/actions/cache-benchmark`, a dependency-free Node credential bridge, to run `cmd/cache-benchmark`. It uses synchronous Go restore/save so its JSON artifact includes both operations before artifact upload. It does not measure automatic runner post dispatch. The helper accepts:
+| `cmd/benchmark` / `benchmark.yml` | Installed exact/minor, latest minor, and cold installer scenarios; launcher timing or upstream-action comparisons |
+| `cmd/acquisition` / `acquisition.yml` | Verify/unpack complete bundle versus launcher ZIP plus native binary; not an exact GitHub repository-CDN model |
+| `cmd/cache-benchmark` / `cache-benchmark.yml` | Explicit restore/workload/save pairs for small, monorepo, and supported Exasol jobs |
+| `cmd/workflow-report` | Coarse completed job/step times; cannot reconstruct native phase reports |
 
 ```text
---workload small|monorepo|exasol-build|exasol-test|exasol-lint
---scenario cold|unchanged|source|dependency|go-upgrade
---source PATH --go GO_EXECUTABLE --seed-go SEED_GO_EXECUTABLE
---samples 20 --mode restore-save|restore --layout split|combined
---compression gzip|none --max-bytes BYTES
---upload-concurrency WORKERS --upload-chunk-bytes BYTES
---build-max-age DURATION --out cache-reports/observations.json
+go run ./cmd/benchmark --dist dist --version 1.26.0 --scenario installed-exact --samples 20 --out .cache/installed-exact.json
 ```
 
-The helper requires the injected runtime cache credentials; an ordinary unauthenticated local shell is not a live-cache benchmark. `--validation` permits fewer observations for correctness only and suppresses a performance-complete summary. `--dependency MODULE@VERSION` (or separate `--dependency-module` and `--dependency-version`) configures the exact dependency mutation outside measurement. The mutation must change the dependency fingerprint. Each pair has a distinct remote namespace and an unmeasured seed where appropriate; local caches reset before each variant. This consumes remote cache storage and the helper does not delete repository caches.
+Select Node 24 with `--node` and Bash with `--shell`. Subprocess timing includes startup/export, excludes runner dispatch. Installed-version scenarios block HTTP through a closed proxy; unit transports count unexpected requests. A proxy is not an OS sandbox.
 
-Reports retain seeds, all commands and exit codes, failed samples, individual cache phases, selected exact Go versions, workload/source/action revisions, runner image, configuration, pair order, and paired delta summaries. Workload output logs are stored beside JSON. OS page caches, upstream module proxies and CPU scheduling are uncontrolled and must be considered when interpreting close results.
+Cache benchmarks need injected runtime credentials. `--validation` permits fewer correctness observations without a complete performance summary. Synchronous restore/save captures both reports before artifact upload but excludes runner post dispatch and installation/prefetch overlap. The helper creates remote entries and does not delete them.
 
-Both manual workflows define a later report job to retrieve completed job/post-step timing through `cmd/workflow-report`. These timestamps are coarse and do not recover native per-phase JSON from an already finished machine. Retain full save-report JSON separately when detailed native metrics are required; ordinary post logs contain concise results.
+Exasol is one acceptance workload. Preserve its build/test/lint split, generation, and warmup. The harness excludes separate tool-cache lifecycle, Python/integration/deployment work, and runner post dispatch; optional tool-initialization outcomes remain in raw records. It is not a complete upstream-pipeline comparison. `workload.yml` checks installer correctness, not speed.
 
-The Exasol harness measures `go mod download`, generation, the selected build/test/lint task and available tool warmup. Optional `golangci-lint version`, `tflint --version` and initialization outcomes remain in raw command records, including optional failures. Lint/plugin cache directories are isolated and cold; they are not included in the Go module/build archives. Task installation, upstream's separate tool-cache restore/save, Python/integration/deploy work and runner post dispatch are excluded. This is an explicit Go workload/cache experiment, not proof of complete upstream-job equivalence. Preserve those exclusions when comparing to Exasol's current setup/warmup.
+## Metric boundaries
 
-## Overlap and chunked-storage boundaries
+| Metric | Meaning / limitation |
+| --- | --- |
+| Installer phase times | Native setup; body-read time belongs to download even when tar extraction overlaps |
+| `launcher_and_export_ms` | Subprocess minus native setup; includes CLI, serialization, and environment export |
+| Installer `peak_temporary_bytes` | Logical staging/marker/ZIP payload; excludes existing toolchains, executable, metadata, and block rounding |
+| Cache `preparation_ms` | Path discovery and dependency fingerprinting; excluded from restore `total_ms` |
+| `lookup_ms`, `transfer_ms`, `archive_ms` | Wall time; transfer may include hashing/compression/control operations |
+| Stage/preflight/merge/cleanup times | Restore diagnostics within archive work; not independent CPU measurements |
+| `module_check_ms`, `save_reason` | Full-content check and save/skip reason; changed modules pay checking plus packing |
+| `transferred_bytes`, `archive_payload_bytes` | HTTP payload and regular-file content; exclude HTTP/TLS overhead and remote-storage/peak-disk costs |
+| Chunk reuse counts/bytes | Existing encoded chunks avoided on save; not total service-storage savings |
 
-The 2026-11-08 self-contained tranche adds `cache-overlap` (default true) and `cache-storage` (`archive` default, `chunked` opt-in). Disable overlap for sequential comparisons. Restore `total_ms` counts prefetch lookup/download work plus later archive validation/merge; `preparation_ms` adds dependency preparation and selected-Go path discovery but excludes time waiting to join the prefetch worker. `prefetch_wait_ms` records that join wait after path discovery. These cache-work times may overlap installer work: adding installer time and cache totals does not represent end-to-end setup elapsed time. The synchronous cache benchmark helper accepts `--storage archive|chunked` and does not exercise installation overlap.
+Installer/cache work can overlap. `prefetch_wait_ms` records the later join wait; summing native phase totals double-counts overlap. Use complete observed setup/workload elapsed time. Retries count toward elapsed phases; successful-payload/progress counters exclude failed attempts and error bodies. Publication counts newly published files. Progress is operational feedback, not a benchmark.
 
-Chunked `transferred_bytes` includes uploaded/downloaded manifests and chunks; `reused_chunks` and `reused_bytes` count existing encoded chunk content skipped on save (not HTTP overhead or actual server storage usage). Chunk transfer time includes content-boundary/hash/compression work and chunk control requests. Local packing is still complete and save/restore retains a full uncompressed tar plus bounded chunk buffers. Overlapped split prefetch can retain both archives before merge. Chunk requests/encoding, independent chunk eviction and cache quota/entry pressure must remain visible in later comparisons. No performance result is established by implementation or reuse correctness tests.
+Save retains a packed archive; restore retains input and staged payload. Chunking retains an uncompressed archive too. Size limits independently bound transferred and expanded tar bytes, including headers, not peak disk/RSS. [Architecture](ARCHITECTURE.md) describes worker buffer allowances.
 
-## Bounded chunk workers
+## Implementation comparisons
 
-`cache-chunk-concurrency` (and the synchronous helper's `--chunk-concurrency`) independently selects 1-16 chunk workers, default 4. Chunk blob operations use one block worker each so this does not multiply `cache-upload-concurrency`. Save compression/hash/lookup/upload and restore lookup/download/decompression can overlap. Transfer phase time is elapsed wall time for the pipeline, not a sum of worker durations. Metrics are reduced only after workers join. Invocation-local duplicate chunks count once as payload transfer and as reused occurrences thereafter.
+Alternate sequential/parallel settings on identical corpora. Measure complete restore and full packing alongside isolated merge/compression. Fixed 4 MiB gzip members produce identical bytes across worker counts, but differ from a single-member baseline; record encoded size. Uncompressed buffering preserves bytes; fewer writes alone prove no elapsed improvement.
 
-Complete local packing and a raw save archive remain; this preserves unchanged-module saves that skip every chunk lookup. Restore retains one private raw archive with bounded concurrent buffers and validated offset writes, not a growing in-memory reorder queue. A conservative chunk-buffer allowance is approximately 32 MiB per worker plus 16 MiB for the save producer, in addition to gzip/runtime/filesystem overhead. This is an allocation planning bound, not measured total resident memory. Worker settings do not affect cache compatibility or content-defined boundaries. Correctness tests exercise concurrency/ordering/cancellation; no performance result is implied.
+Compare archive/chunked and split/combined with explicit compression, concurrency, block sizes, and filtering. Chunking still packs the tree and adds requests, manifests, buffers, and eviction risks. Include these costs and separate cold seed from warm repeat.
+
+Ordinary artifacts precede post hooks and cannot collect later save JSON; use debug logs or completed-log collection. Restore-only artifacts are not full lifecycle evidence. GitHub's **Set up job** combines acquisition with other work and cannot be attributed to one action.

@@ -11,11 +11,8 @@ The installer downloads official Go releases over HTTPS. The root Node action re
 | Install Go, write action outputs and job summaries | No `GITHUB_TOKEN` scope; runner directories and environment files must be writable |
 | Restore/save caches | Runner-issued cache access, further limited by the action's `cache` input |
 | Check out the consumer repository | Normally `contents: read` for `actions/checkout` |
-| Acquire a private action | Repository sharing/access configured by its owner, or a separate credential restricted to reading that action repository |
 
 For a normal checkout/build job, set `permissions: { contents: read }`. The action itself can run with `permissions: {}` if the job does not need repository API access. Other steps may need their own scopes. See [checkout's permissions](https://github.com/actions/checkout#recommended-permissions) and [GitHub's permission syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#permissions).
-
-Private-action acquisition happens before this action runs. Prefer configured [private repository sharing](https://docs.github.com/en/actions/how-tos/reuse-automations/share-with-your-organization) where available. If a separate checkout is necessary, give its credential read access only to the action repository, use `persist-credentials: false`, and keep it out of action inputs and cache directories. The consumer repository's [`GITHUB_TOKEN`](https://docs.github.com/en/actions/concepts/security/github_token) does not automatically grant access to another private repository.
 
 ## Action policy and runner policy
 
@@ -63,7 +60,7 @@ Private staging and no-replace publication reduce accidental interference, but t
 
 ## Cancellation and diagnostic data
 
-The automatic post condition excludes cancelled jobs and saves failed jobs only with `cache-save-on-failure: true`. In-process cancellation asks workers to stop and joins them before normal cleanup; a blocking filesystem call may still finish first. Abrupt process termination can leave local staging/state or remote uncommitted blobs; cleanup is best effort and remote expiry belongs to the service. The [lifecycle validation guide](LIFECYCLE_VALIDATION.md) distinguishes local fixtures from unverified hosted policy cases.
+The automatic post condition excludes cancelled jobs and saves failed jobs only with `cache-save-on-failure: true`. In-process cancellation asks workers to stop and joins them before normal cleanup; a blocking filesystem call may still finish first. Abrupt process termination can leave local staging/state or remote uncommitted blobs; cleanup is best effort and remote expiry belongs to the service. The [validation guide](DEVELOPMENT.md#validation) distinguishes local fixtures from unverified hosted policy cases.
 
 Runtime bearer credentials authenticate cache control requests only; signed URLs authenticate blob transfers without a bearer header. Neither is written into private post state. Post state does contain configuration, cache paths, keys and content identities, and runs under the same runner account as other job processes. It is not a secret store or a boundary against malicious code in that job.
 

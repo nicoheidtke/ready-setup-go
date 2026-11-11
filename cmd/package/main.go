@@ -24,7 +24,7 @@ func main() {
 	}
 }
 func run() error {
-	out := flag.String("out", "dist", "new or existing output directory")
+	out := flag.String("out", "dist", "new or empty output directory")
 	archives := flag.String("archives", "", "optional directory outside output for acquisition experiment assets")
 	host := flag.String("platform", "", "optional single platform, e.g. windows/amd64; default builds all six")
 	clean := flag.Bool("require-clean", false, "reject local changes for release preparation")
@@ -41,6 +41,9 @@ func run() error {
 			return fmt.Errorf("unsupported platform %q", *host)
 		}
 		platforms = []string{*host}
+	}
+	if err := validateOutputDirectories(*out, *archives); err != nil {
+		return err
 	}
 	provenance, err := distribution.Source(".", platforms, *clean)
 	if err != nil {
@@ -64,12 +67,12 @@ func run() error {
 			return err
 		}
 	}
-	files := []string{"action.yml", "launch.sh", "launch.cjs", "post.cjs", "launcher.cjs", "experimental/composite/action.yml", "experimental/node/action.yml", "experimental/node/launch.cjs", "experimental/node/post.cjs", "README.md", "LICENSE", "SECURITY.md", "CONTRIBUTING.md", "ROADMAP.md", "AGENTS.md", "docs/USAGE.md", "docs/ARCHITECTURE.md", "docs/COMPARISON.md", "docs/BENCHMARKS.md", "docs/DEVELOPMENT.md", "docs/IMPLEMENTATION_PLAN.md", "docs/LIFECYCLE_VALIDATION.md", "docs/SECURITY_MODEL.md", "docs/RELEASES.md", "docs/validation-2026-09-22.md", "docs/investigation-2026-11-10.md", "internal/cachebackend/PROTOCOL.md"}
-	for _, rel := range files {
+	for _, rel := range packagedFiles {
 		b, err := os.ReadFile(rel)
 		if err != nil {
 			return err
 		}
+		b = sourceDocumentLinks(b, rel, provenance.Revision)
 		dst := filepath.Join(*out, filepath.FromSlash(rel))
 		if err = os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
 			return err

@@ -1,30 +1,43 @@
 # Contributing
 
-Use the bug and feature forms in [Issues](https://github.com/nicoheidtke/setup-go-better/issues). Include a minimal workflow, the bundled action SHA and relevant runner/Go versions. Redact credentials, signed URLs, private module names and source before attaching logs or JSON reports. Report vulnerabilities through the [security policy](SECURITY.md).
+Use [Issues](https://github.com/nicoheidtke/setup-go-better/issues) for bugs and proposals. For a bug, include a minimal workflow, bundled action SHA, runner/Go versions, and expected versus actual behavior. Redact credentials, signed URLs, private module names, and source from logs or reports. Report vulnerabilities privately through [SECURITY.md](SECURITY.md).
 
-## Scope and support
+Discuss substantial changes to public inputs, defaults, or cache compatibility before implementation. Small fixes and documentation improvements can go straight to a pull request. Human and automated contributions follow the same requirements; [AGENTS.md](AGENTS.md) describes engineering constraints.
 
-The action selects Go 1.26+ and targets GitHub-hosted Linux, macOS and Windows on amd64 and arm64. Prereleases receive best-effort support without a response-time or backport commitment. Use [development status](docs/DEVELOPMENT.md) to distinguish implemented behavior, local fixtures and hosted validation; self-hosted guarantees and cache service cases remain subject to those limits.
+## Get started
 
-Discuss changes to inputs, cache compatibility or defaults in an issue before a substantial implementation. Keep runtime work in dependency-free Go and launcher glue small. The priorities are complete workflow cost, resource efficiency and maintainability, in that order. Performance changes need representative measurements rather than assumed speedups. Read the [roadmap](ROADMAP.md), [development guide](docs/DEVELOPMENT.md) and [benchmark methodology](docs/BENCHMARKS.md).
+Install Git, Go 1.26 or newer, and Node 24, then clone the repository and enter its root directory. Release builds use Go 1.27.1. Runtime code uses the Go standard library and dependency-free launcher files; no npm installation is needed.
 
-## Local checks
-
-Source files use LF line endings through `.gitattributes` and `.editorconfig`. If a Windows installation inherits automatic CRLF conversion, align this checkout with `git config --local core.autocrlf false` and `git config --local core.eol lf`; global Git settings need not change. Release packages have their own `.gitattributes` to preserve exact checksummed bytes, so do not normalize packaged files after building them.
-
-Use the supported compiler versions recorded in the development guide. After changing Go or launcher behavior, run the relevant checks:
+Run the canonical local checks:
 
 ```text
-gofmt -w cmd internal testdata/smoke
-go test ./...
-go vet ./...
-node --test launcher.test.cjs .github/actions/cache-benchmark/run.test.cjs .github/actions/node-runtime/locate.test.cjs .github/scripts/cache-probe.test.cjs
+go run ./cmd/check
 ```
 
-Lint workflow edits with the pinned actionlint version in [the development guide](docs/DEVELOPMENT.md). Packaging, reproducibility and distribution verification commands are in [release procedures](docs/RELEASES.md); consumers require bundled executables, not a source-only commit. Local packaged fixtures are opt-in and use an existing toolchain. Add meaningful regression coverage for behavior changes and retain error/cancellation cleanup.
+This validates Go formatting without rewriting files, runs Go tests and vet, runs all four Node test suites, and checks documentation links and the input reference. To select a Node 24 executable outside `PATH`, use `--node PATH`. Use `--help` for options. Tests use temporary files and local protocol fixtures; this command does not run hosted workflows or publish anything.
 
-All repository workflows are manual-only during the proof of concept. Do not dispatch or rerun hosted workflows, enable automatic triggers, change visibility/settings, publish a release or modify the upstream Exasol repository as part of a contribution without explicit maintainer authorization. Preparing workflow definitions is separate from executing them.
+For workflow changes, also run:
 
-Keep the README focused on consumers. Put build/validation records in the development guide, decisions in the roadmap and measurement definitions in the benchmark guide. A pull request should explain the resulting behavior, relevant checks and any unverified limits.
+```text
+go run ./cmd/check --workflows
+```
+
+This adds actionlint 1.7.12 through `go run`, which may download the pinned tool and its dependencies. Optional shellcheck and pyflakes integrations are disabled. Go can also download a compiler selected by its toolchain settings; use `GOTOOLCHAIN=local` when checks must use only an already installed compiler.
+
+Keep source UTF-8 with LF line endings, following `.editorconfig` and `.gitattributes`. Fix reported Go formatting with `gofmt`. Generated distribution bytes must remain unchanged after packaging.
+
+## Validate the change
+
+Use focused tests while developing, then run the canonical checks before review. Add regression coverage for changed behavior, including relevant error and cancellation paths. Input or cache changes should cover validation, defaults, main/post compatibility, existing-file preservation, and format/key compatibility. Follow the [security model](docs/SECURITY_MODEL.md) when handling credentials, restored content, or diagnostics.
+
+Packaging and launcher/lifecycle changes also need the relevant [native integration checks](docs/DEVELOPMENT.md#validation). Release candidates require clean-source reproducibility and [distribution verification](docs/RELEASES.md). These checks are separate from ordinary unit tests; skipped opt-in fixtures are not passing integration results. Check behavior on the Go 1.26 line and the release compiler where affected. See [support and validation limits](docs/DEVELOPMENT.md#support-and-validation-status).
+
+Performance claims need reproducible evidence following the [measurement methodology](docs/BENCHMARKS.md), including complete workflow cost and resource tradeoffs. State the workload, revisions, configuration, and limitations.
+
+## Submit a pull request
+
+Keep the change focused and update the document that owns the affected behavior. Explain the problem and resulting behavior, compatibility implications, checks run, and anything skipped or unverified. Include a reproduction for a bug and representative evidence for a performance claim. Review considers correctness, public compatibility, resource bounds, maintainability, and adequate validation.
+
+Repository workflows are manual. Maintainers control hosted execution and publication; the boundaries are in [AGENTS.md](AGENTS.md#maintainer-operations). Source-only revisions are not runnable action distributions.
 
 Contributions are made under the project's [MIT license](LICENSE).
