@@ -11,6 +11,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"setup-go-better/internal/httpretry"
 )
 
 // Metrics are wall times. Download includes blocked body reads; extraction excludes
@@ -176,19 +178,26 @@ func (c Config) resolve(ctx context.Context, s Selector, m *Metrics) (Version, a
 func (c Config) get(ctx context.Context, u string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
-		return nil, err
+		return nil, &requestError{err}
 	}
 	req.Header.Set("User-Agent", "setup-go-better")
-	resp, err := c.Client.Do(req)
+	resp, err := httpretry.Do(c.Client, req)
 	if err != nil {
-		return nil, err
+		return nil, &requestError{err}
 	}
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
-		return nil, fmt.Errorf("GET %s: HTTP %d", u, resp.StatusCode)
+		return nil, fmt.Errorf("toolchain HTTP request returned HTTP %d", resp.StatusCode)
 	}
 	return resp, nil
 }
+
+// Keep transport URLs (including proxy credentials) out of returned diagnostic
+// text while retaining cancellation/transport identity for callers.
+type requestError struct{ cause error }
+
+func (e *requestError) Error() string { return "toolchain HTTP request failed" }
+func (e *requestError) Unwrap() error { return e.cause }
 func (c Config) Setup(ctx context.Context, version string, latest bool) (r Result, err error) {
 	return c.SetupResolved(ctx, version, latest, nil)
 }

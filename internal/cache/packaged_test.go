@@ -161,11 +161,12 @@ func TestPackagedLifecycle(t *testing.T) {
 		cacheRoot := filepath.Join(root, "cache roots with spaces")
 		build, modules := filepath.Join(cacheRoot, "build"), filepath.Join(cacheRoot, "modules")
 		fields := map[string]string{}
-		for _, key := range []string{"GITHUB_ENV", "GITHUB_PATH", "GITHUB_OUTPUT", "GITHUB_STATE"} {
+		for _, key := range []string{"GITHUB_ENV", "GITHUB_PATH", "GITHUB_OUTPUT", "GITHUB_STATE", "GITHUB_STEP_SUMMARY"} {
 			fields[key] = filepath.Join(root, key)
 			put(t, fields[key], "")
 		}
 		env := map[string]string{
+			"GITHUB_ACTIONS": "true", "RUNNER_DEBUG": "1", "NO_COLOR": "1", "INPUT_SUMMARY": "true",
 			"RUNNER_TEMP": runnerTemp, "RUNNER_TOOL_CACHE": "", "GITHUB_WORKSPACE": workspace, "GITHUB_REPOSITORY": "test/local", "GITHUB_WORKFLOW_REF": "test/local/.github/workflows/packaged.yml@refs/heads/main", "GITHUB_JOB": "packaged-smoke", "GITHUB_ACTION": fmt.Sprintf("packaged_smoke_%d", iteration), "GITHUB_RUN_ID": "local", "GITHUB_RUN_ATTEMPT": "1",
 			"INPUT_GO-VERSION": version, "INPUT_CHECK-LATEST": "false", "INPUT_CACHE": "restore-save", "INPUT_CACHE-LAYOUT": "combined", "INPUT_CACHE-COMPRESSION": "gzip", "INPUT_CACHE-STRICT": "true", "INPUT_CACHE-SCOPE": "local-packaged-smoke", "INPUT_CACHE-DEPENDENCY-PATH": ".", "INPUT_CACHE-REPORT": filepath.Join(root, "cache-report.json"),
 			"INPUT_CACHE-UPLOAD-CHUNK-BYTES":   "4194304000",
@@ -206,12 +207,19 @@ func TestPackagedLifecycle(t *testing.T) {
 				t.Fatalf("%s %v: %v\n%s", binary, args, err, out)
 			}
 			t.Logf("%s %v\n%s", filepath.Base(binary), args, out)
+			if bytes.Contains(out, []byte("local-test-main")) || bytes.Contains(out, []byte("local-test-post")) || bytes.Contains(out, []byte(server.URL)) {
+				t.Fatal("subprocess logs exposed runtime credentials or a signed URL")
+			}
 		}
 		launcherRoot := dist
 		if iteration == 1 {
 			launcherRoot = filepath.Join(dist, "experimental", "node")
 		}
 		execute(node, filepath.Join(launcherRoot, "launch.cjs"))
+		mainSummary, err := os.ReadFile(fields["GITHUB_STEP_SUMMARY"])
+		if err != nil || !bytes.Contains(mainSummary, []byte("Go toolchain")) || !bytes.Contains(mainSummary, []byte("Go cache restore")) {
+			t.Fatalf("missing packaged main summary: %s %v", mainSummary, err)
+		}
 		outputs, err := os.ReadFile(fields["GITHUB_OUTPUT"])
 		if err != nil {
 			t.Fatal(err)
@@ -249,7 +257,16 @@ func TestPackagedLifecycle(t *testing.T) {
 			t.Fatal("main did not save post state")
 		}
 		env["ACTIONS_RUNTIME_TOKEN"] = "local-test-post"
+		env["GITHUB_STEP_SUMMARY"] = filepath.Join(root, "POST_STEP_SUMMARY")
+		put(t, env["GITHUB_STEP_SUMMARY"], "")
 		execute(node, filepath.Join(launcherRoot, "post.cjs"))
+		postSummary, err := os.ReadFile(env["GITHUB_STEP_SUMMARY"])
+		if err != nil || !bytes.Contains(postSummary, []byte("Go cache save")) {
+			t.Fatalf("missing packaged post summary: %s %v", postSummary, err)
+		}
+		if after, err := os.ReadFile(fields["GITHUB_STEP_SUMMARY"]); err != nil || !bytes.Equal(after, mainSummary) {
+			t.Fatal("post modified the main step summary", err)
+		}
 		if _, err := os.Stat(env["STATE_cache_state"]); !os.IsNotExist(err) {
 			t.Fatal("post did not remove private state", err)
 		}

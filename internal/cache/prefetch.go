@@ -3,10 +3,14 @@ package cache
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	"strings"
 	"time"
 
+	"setup-go-better/internal/actionlog"
 	"setup-go-better/internal/cachearchive"
+	"setup-go-better/internal/cachebackend"
 )
 
 // Prefetch holds private downloads, never credentials in persisted state. It
@@ -95,7 +99,7 @@ func (p *Prefetch) download(ctx context.Context) {
 			break
 		}
 		m := Metric{Kind: snap.Kind, Key: snap.Key}
-		err := func() error {
+		err := func() (transferErr error) {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
@@ -103,15 +107,25 @@ func (p *Prefetch) download(ctx context.Context) {
 			entry, err := p.backend.Lookup(ctx, snap.Key, snap.Version, []string{snap.Prefix, snap.CompatiblePrefix})
 			m.LookupMS = ms(t)
 			if err != nil || entry == nil {
+				if entry == nil && err == nil {
+					m.RestoreReason = "no-match"
+				}
 				return err
 			}
 			m.MatchedKey = entry.Key
+			if strings.HasPrefix(entry.Key, snap.Prefix) {
+				m.MatchType = "dependency-exact"
+			} else {
+				m.MatchType = "dependency-compatible"
+			}
 			f, err := os.CreateTemp("", "setup-go-better-prefetch-*")
 			if err != nil {
 				return err
 			}
 			defer f.Close()
 			p.files[i] = f.Name()
+			ctx, finish := actionlog.Default.Transfer(ctx, "Download "+snap.Kind+" cache", 0, p.state.Config.Storage != "chunked")
+			defer func() { finish(transferErr) }()
 			t = time.Now()
 			if p.state.Config.Storage == "chunked" {
 				err = downloadChunks(ctx, p.backend, snap, p.state.Config, *entry, f, &m)
@@ -130,10 +144,15 @@ func (p *Prefetch) download(ctx context.Context) {
 			os.Remove(p.files[i])
 			p.files[i] = ""
 			m.Skipped = true
+			m.RestoreReason = "missing-chunk"
 		} else if err != nil {
 			os.Remove(p.files[i])
 			p.files[i] = ""
 			m.Error = err.Error()
+			m.RestoreReason = "restore-failed"
+			if errors.Is(err, cachebackend.ErrPermission) {
+				m.RestoreReason = "access-denied"
+			}
 		}
 		p.report.Snapshots = append(p.report.Snapshots, m)
 		if errors.Is(err, errMissingChunk) {
@@ -187,11 +206,14 @@ func (p *Prefetch) merge(ctx context.Context, s *State) (Report, error) {
 		}()
 		if err != nil {
 			m.Error = err.Error()
+			if m.RestoreReason == "" {
+				m.RestoreReason = "restore-failed"
+			}
 			if first == nil {
 				first = err
 			}
 			if !s.Config.Strict {
-				warning(err)
+				warning(fmt.Errorf("restore %s: %w", m.Kind, err))
 			}
 		}
 	}

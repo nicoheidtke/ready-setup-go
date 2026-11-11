@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -337,5 +338,39 @@ func TestHTTPFailureAndCancellation(t *testing.T) {
 	cancel()
 	if _, e := c.Setup(ctx, "1.26.0", false); e == nil {
 		t.Fatal("ignored cancellation")
+	}
+}
+
+func TestToolchainGETRecoversBeforeReadingBody(t *testing.T) {
+	c := testConfig(t)
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = io.WriteString(w, "verified-later")
+	}))
+	defer server.Close()
+	resp, err := c.get(context.Background(), server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(resp.Body)
+	if string(data) != "verified-later" || calls != 2 {
+		t.Fatalf("GET not recovered: %s calls=%d", data, calls)
+	}
+}
+
+func TestHTTPErrorTextHidesRequestURLAndRetainsCancellation(t *testing.T) {
+	c := testConfig(t)
+	c.MetadataURL = "http://127.0.0.1:1/private?sig=private-signature"
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := c.Setup(ctx, "1.26.0", false)
+	if err == nil || !errors.Is(err, context.Canceled) || strings.Contains(err.Error(), "private-signature") || strings.Contains(err.Error(), "127.0.0.1") {
+		t.Fatalf("unsafe HTTP error or lost cancellation: %v", err)
 	}
 }

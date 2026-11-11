@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"setup-go-better/internal/actionenv"
+	"setup-go-better/internal/actionlog"
 	"setup-go-better/internal/cachearchive"
 	"setup-go-better/internal/cachebackend"
 )
@@ -46,6 +47,8 @@ type Metric struct {
 	Kind               string  `json:"kind"`
 	Key                string  `json:"key"`
 	MatchedKey         string  `json:"matched_key,omitempty"`
+	MatchType          string  `json:"match_type,omitempty"`
+	RestoreReason      string  `json:"restore_reason,omitempty"`
 	Hit                bool    `json:"hit"`
 	Skipped            bool    `json:"skipped"`
 	Bytes              int64   `json:"transferred_bytes"`
@@ -80,8 +83,7 @@ type Report struct {
 
 func ms(start time.Time) float64 { return float64(time.Since(start)) / float64(time.Millisecond) }
 func warning(err error) {
-	msg := strings.NewReplacer("%", "%25", "\r", "%0D", "\n", "%0A").Replace(err.Error())
-	fmt.Fprintln(os.Stdout, "::warning::setup-go-better cache: "+msg)
+	actionlog.Default.Warning("Go cache", err.Error()+" "+DiagnosticHint(err))
 }
 func failure(c Config, err error) error {
 	if c.Strict {
@@ -184,7 +186,7 @@ func Save(ctx context.Context, b Backend, s State) (Report, error) {
 			return r, failure(s.Config, err)
 		}
 		m := Metric{Kind: snap.Kind, Key: snap.Key}
-		err := func() error {
+		err := func() (transferErr error) {
 			if snap.Kind == "modules" && snap.RestoredDigest != "" {
 				t := time.Now()
 				stats, err := cachearchive.Fingerprint(ctx, snap.Roots, s.Config.MaxBytes)
@@ -234,6 +236,12 @@ func Save(ctx context.Context, b Backend, s State) (Report, error) {
 				return err
 			}
 			t = time.Now()
+			total := size
+			if s.Config.Storage == "chunked" {
+				total = 0 // Raw tar size is not encoded bytes actually uploaded.
+			}
+			ctx, finish := actionlog.Default.Transfer(ctx, "Upload "+snap.Kind+" cache (acknowledged payload)", total, false)
+			defer func() { finish(transferErr) }()
 			if s.Config.Storage == "chunked" {
 				err = saveChunks(ctx, b, snap, s.Config, f, &m)
 			} else {
@@ -264,13 +272,14 @@ func Save(ctx context.Context, b Backend, s State) (Report, error) {
 }
 
 func writeReport(path string, r Report) error {
+	logReport(actionlog.Default, r)
+	actionlog.Default.DebugJSON("cache "+r.Phase+" report", r)
+	if path == "" {
+		return nil
+	}
 	b, err := json.MarshalIndent(r, "", "  ")
 	if err != nil {
 		return err
-	}
-	fmt.Fprintf(os.Stderr, "cache %s: %.1f ms, %s\n", r.Phase, r.TotalMS, strings.TrimSpace(string(b)))
-	if path == "" {
-		return nil
 	}
 	return os.WriteFile(path, append(b, '\n'), 0600)
 }
@@ -307,12 +316,18 @@ func StartPrefetched(ctx context.Context, c Config, version, toolchain string, p
 	if err := c.Validate(); err != nil {
 		return err
 	}
+	debugConfig(c)
 	if c.Mode == "off" {
+		actionlog.Default.Printf("Cache SKIP · caching disabled\n")
+		summaryReport(c, Report{Phase: "restore", SkippedReason: "caching disabled"}, "")
 		return nil
 	}
+	endStage := actionlog.Default.Stage("Restore Go caches (join prefetch, validate and publish)")
+	defer endStage()
 	prep := time.Now()
 	unavailable := func(err error) error {
 		r := Report{Phase: "restore", PreparationMS: ms(prep), SkippedReason: err.Error()}
+		summaryReport(c, r, "Post-job save unavailable because cache preparation failed.")
 		if e := writeReport(c.Report, r); e != nil {
 			return failure(c, e)
 		}
@@ -325,7 +340,9 @@ func StartPrefetched(ctx context.Context, c Config, version, toolchain string, p
 	}
 	read, write := permissions()
 	if !read && (!write || c.Mode == "restore") {
-		if err := writeReport(c.Report, Report{Phase: "restore", SkippedReason: "runner cache policy disables requested operations"}); err != nil {
+		r := Report{Phase: "restore", SkippedReason: "runner cache policy disables requested operations"}
+		summaryReport(c, r, "Post-job save disabled by runner cache policy.")
+		if err := writeReport(c.Report, r); err != nil {
 			return failure(c, err)
 		}
 		return nil
@@ -408,6 +425,15 @@ func StartPrefetched(ctx context.Context, c Config, version, toolchain string, p
 	}
 	r.PreparationMS = preparationMS
 	r.PrefetchWaitMS = waitMS
+	savePolicy := "Post-job save requested; save results appear in the post-job summary."
+	if c.Mode == "restore" {
+		savePolicy = "Post-job save disabled: restore-only mode."
+	} else if !write {
+		savePolicy = "Post-job save disabled: runner cache policy denies writes."
+	} else if restoreErr != nil {
+		savePolicy = "Post-job save unavailable because strict restore failed."
+	}
+	summaryReport(c, r, savePolicy)
 	hit := len(r.Snapshots) > 0
 	var keys, matched []string
 	var bytes int64
@@ -431,6 +457,11 @@ func StartPrefetched(ctx context.Context, c Config, version, toolchain string, p
 		return restoreErr
 	}
 	if c.Mode != "restore-save" || !write {
+		if c.Mode == "restore" {
+			actionlog.Default.Printf("Cache save SKIP · restore-only mode\n")
+		} else {
+			actionlog.Default.Printf("Cache save SKIP · runner cache policy denies writes\n")
+		}
 		return nil
 	}
 	if os.Getenv("GITHUB_STATE") == "" {
@@ -460,6 +491,8 @@ func Post(ctx context.Context) error {
 	if path == "" {
 		return nil
 	}
+	endStage := actionlog.Default.Stage("Save Go caches (post-job)")
+	defer endStage()
 	policy := DefaultConfig()
 	policy.Strict = os.Getenv("STATE_cache_strict") == "true"
 	stateError := func(err error) error { return failure(policy, fmt.Errorf("cache post state: %w", err)) }
@@ -489,23 +522,37 @@ func Post(ctx context.Context) error {
 	if err = s.Config.Validate(); err != nil {
 		return stateError(err)
 	}
+	debugConfig(s.Config)
 	if s.Config.Mode != "restore-save" {
+		actionlog.Default.Printf("Cache save SKIP · restore-only or disabled mode\n")
+		summaryReport(s.Config, Report{Phase: "save", SkippedReason: "restore-only or disabled mode"}, "")
 		return nil
 	}
 	if _, write := permissions(); !write {
+		r := Report{Phase: "save", SkippedReason: "runner cache policy denies writes"}
+		summaryReport(s.Config, r, "")
+		if err := writeReport(postReportPath(s.Config.Report), r); err != nil {
+			return failure(s.Config, err)
+		}
 		return nil
 	}
 	backend, err := newBackend(s.Config)
 	if err != nil {
+		summaryReport(s.Config, Report{Phase: "save", SkippedReason: err.Error()}, "")
 		return failure(s.Config, err)
 	}
 	r, saveErr := Save(ctx, backend, s)
-	report := s.Config.Report
-	if report != "" {
-		report += ".post.json"
-	}
+	summaryReport(s.Config, r, "")
+	report := postReportPath(s.Config.Report)
 	if err = writeReport(report, r); err != nil {
 		return failure(s.Config, errors.Join(saveErr, err))
 	}
 	return saveErr
+}
+
+func postReportPath(path string) string {
+	if path != "" {
+		return path + ".post.json"
+	}
+	return ""
 }

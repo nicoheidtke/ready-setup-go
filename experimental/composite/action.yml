@@ -10,6 +10,9 @@ inputs:
   check-latest:
     description: Resolve minor selectors against official releases.
     default: 'false'
+  summary:
+    description: Write concise toolchain results to the GitHub job summary.
+    default: 'true'
 outputs:
   go-version:
     description: Selected exact Go version.
@@ -27,4 +30,5 @@ runs:
         SETUP_GO_BETTER_VERSION: ${{ inputs.go-version }}
         SETUP_GO_BETTER_VERSION_FILE: ${{ inputs.go-version-file }}
         SETUP_GO_BETTER_LATEST: ${{ inputs.check-latest }}
+        SETUP_GO_BETTER_SUMMARY: ${{ inputs.summary }}
       run: 'source "$SETUP_GO_BETTER_ROOT/launch.sh" --cache=off'

@@ -4,7 +4,7 @@ Private cache restore staging reuses successfully prepared directory paths for t
 
 The root action uses GitHub's Node 24 runtime for credentials and automatic post-job hooks. Minimal, dependency-free launcher glue invokes a precompiled Go executable; installation, cache policy, archive handling and networking stay in Go. Consumers do not install npm packages or build the action. A bundled distribution contains six executables, so action acquisition transfers binaries for platforms the current job does not use.
 
-The `experimental/node` path aliases the root lifecycle. The Bash composite at `experimental/composite` installs Go only and exists for launcher comparisons; it does not provide automatic caching. See [usage](USAGE.md) for the public interface, [development](DEVELOPMENT.md) for packaging and verification, and the [cache protocol](../internal/cachebackend/PROTOCOL.md) for service details.
+The `experimental/node` path aliases the root lifecycle. The Bash composite at `experimental/composite` installs Go only and exists for launcher comparisons; it does not provide automatic caching. See [usage](USAGE.md) for the public interface, [development](DEVELOPMENT.md) for packaging and verification, the [security model](SECURITY_MODEL.md) for permissions and trust boundaries, and the [cache protocol](../internal/cachebackend/PROTOCOL.md) for service details.
 
 ## Installation
 

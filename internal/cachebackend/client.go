@@ -18,6 +18,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"setup-go-better/internal/actionlog"
+	"setup-go-better/internal/httpretry"
 )
 
 const (
@@ -131,7 +134,7 @@ func (c *Client) getDownload(ctx context.Context, u *url.URL, byteRange, etag st
 	if etag != "" {
 		req.Header.Set("If-Match", etag)
 	}
-	resp, err := c.httpClient().Do(req)
+	resp, err := httpretry.Do(c.httpClient(), req)
 	if err != nil {
 		return nil, transferError(ctx, "download")
 	}
@@ -145,7 +148,8 @@ func consumeDownload(ctx context.Context, resp *http.Response, dst io.Writer, li
 	if resp.ContentLength > limit {
 		return 0, errors.New("cache download exceeds archive size limit")
 	}
-	n, err := io.Copy(dst, io.LimitReader(resp.Body, limit))
+	actionlog.TransferTotal(ctx, resp.ContentLength)
+	n, err := io.Copy(dst, io.LimitReader(actionlog.TransferReader(ctx, resp.Body), limit))
 	if err != nil {
 		return n, transferError(ctx, "download body")
 	}
@@ -213,6 +217,7 @@ func (c *Client) downloadRanges(ctx context.Context, u *url.URL, dst *os.File, b
 		resp.Body.Close()
 		return c.downloadStream(ctx, u, dst, limit)
 	}
+	actionlog.TransferTotal(ctx, size)
 	etag := resp.Header.Get("ETag")
 	if strings.HasPrefix(etag, "W/") {
 		etag = ""
@@ -326,7 +331,7 @@ func consumeRange(ctx context.Context, resp *http.Response, dst io.Writer, first
 	if resp.ContentLength >= 0 && resp.ContentLength != length {
 		return 0, errors.New("cache download range length mismatch")
 	}
-	n, err := io.Copy(dst, io.LimitReader(resp.Body, length))
+	n, err := io.Copy(dst, io.LimitReader(actionlog.TransferReader(ctx, resp.Body), length))
 	if err != nil {
 		return n, transferError(ctx, "download range body")
 	}
@@ -495,6 +500,12 @@ func (c *Client) put(ctx context.Context, u *url.URL, body io.Reader, size int64
 	req.ContentLength = size
 	if size == 0 {
 		req.Body = http.NoBody
+	} else if source, ok := body.(io.ReaderAt); ok {
+		// Each attempt gets an independent cursor over identical bytes. The
+		// upload owns its reservation and uses deterministic block IDs/list.
+		req.GetBody = func() (io.ReadCloser, error) {
+			return io.NopCloser(io.NewSectionReader(source, 0, size)), nil
+		}
 	}
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("x-ms-version", "2021-12-02")
@@ -502,7 +513,7 @@ func (c *Client) put(ctx context.Context, u *url.URL, body io.Reader, size int64
 	if blob {
 		req.Header.Set("x-ms-blob-type", "BlockBlob")
 	}
-	resp, err := c.httpClient().Do(req)
+	resp, err := httpretry.Do(c.httpClient(), req)
 	if err != nil {
 		return transferError(ctx, "upload")
 	}
@@ -513,6 +524,10 @@ func (c *Client) put(ctx context.Context, u *url.URL, body io.Reader, size int64
 	_, err = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 	if err != nil {
 		return transferError(ctx, "upload response")
+	}
+	if contentType == "application/octet-stream" {
+		// Count acknowledged payload only, excluding the block-list request.
+		actionlog.Transferred(ctx, size)
 	}
 	return nil
 }
@@ -537,7 +552,14 @@ func (c *Client) rpc(ctx context.Context, method string, input, output any) erro
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.Token)
-	resp, err := c.httpClient().Do(req)
+	var resp *http.Response
+	if method == "GetCacheEntryDownloadURL" {
+		// This POST is read-only. Reservation/finalization have ambiguous
+		// outcomes on transport failure and deliberately remain single-shot.
+		resp, err = httpretry.Do(c.httpClient(), req)
+	} else {
+		resp, err = c.httpClient().Do(req)
+	}
 	if err != nil {
 		return transferError(ctx, "service request")
 	}

@@ -1,10 +1,86 @@
 package main
 
 import (
+	"bytes"
 	"os"
+	"path/filepath"
+	"runtime"
+	"setup-go-better/internal/actionlog"
 	"strings"
 	"testing"
 )
+
+func TestStageBalanceOnVersionError(t *testing.T) {
+	var out bytes.Buffer
+	old := actionlog.Default
+	actionlog.Default = actionlog.New(&out, true)
+	defer func() { actionlog.Default = old }()
+	summary := filepath.Join(t.TempDir(), "summary")
+	if err := os.WriteFile(summary, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GITHUB_STEP_SUMMARY", summary)
+	if err := runArgs(t, "setup", "--go-version=invalid", "--cache=off"); err == nil {
+		t.Fatal("invalid selector accepted")
+	}
+	if got := out.String(); got != "::group::Resolve Go version\n::endgroup::\n" {
+		t.Fatalf("failure left a group open: %q", got)
+	}
+	if b, err := os.ReadFile(summary); err != nil || !strings.Contains(string(b), "ERROR") || !strings.Contains(string(b), "invalid Go version") {
+		t.Fatalf("setup failure missing from summary: %s, %v", b, err)
+	}
+}
+
+func TestInstalledToolchainStagesStaySequential(t *testing.T) {
+	var out bytes.Buffer
+	old := actionlog.Default
+	actionlog.Default = actionlog.New(&out, true)
+	defer func() { actionlog.Default = old }()
+	root := t.TempDir()
+	arch := runtime.GOARCH
+	if arch == "amd64" {
+		arch = "x64"
+	}
+	tool := filepath.Join(root, "go", "1.26.4", arch)
+	if err := os.MkdirAll(filepath.Join(tool, "bin"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	exe := "go"
+	if runtime.GOOS == "windows" {
+		exe += ".exe"
+	}
+	for path, data := range map[string]string{filepath.Join(tool, "VERSION"): "go1.26.4", filepath.Join(tool, "bin", exe): "fixture"} {
+		if err := os.WriteFile(path, []byte(data), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("RUNNER_TOOL_CACHE", root)
+	summary := filepath.Join(t.TempDir(), "summary")
+	if err := os.WriteFile(summary, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GITHUB_STEP_SUMMARY", summary)
+	for _, name := range []string{"GITHUB_ENV", "GITHUB_PATH", "GITHUB_OUTPUT", "INPUT_GO-VERSION-FILE"} {
+		t.Setenv(name, "")
+	}
+	if err := runArgs(t, "setup", "--go-version=1.26.4", "--cache=off"); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	if !strings.HasPrefix(got, "::group::Resolve Go version\n::endgroup::\n::group::Prepare Go toolchain\n") || !strings.HasSuffix(got, "::endgroup::\nCache SKIP · caching disabled\n") || strings.Count(got, "::endgroup::") != 2 {
+		t.Fatalf("unexpected group sequence: %q", got)
+	}
+	b, err := os.ReadFile(summary)
+	if err != nil || !strings.Contains(string(b), "Go toolchain") || !strings.Contains(string(b), "1.26.4") || !strings.Contains(string(b), "caching disabled") {
+		t.Fatalf("missing main summary: %s, %v", b, err)
+	}
+	if err = runArgs(t, "setup", "--go-version=1.26.4", "--cache=off", "--summary=false"); err != nil {
+		t.Fatal(err)
+	}
+	if after, _ := os.ReadFile(summary); string(after) != string(b) {
+		t.Fatal("summary opt-out appended content")
+	}
+}
 
 func runArgs(t *testing.T, args ...string) error {
 	t.Helper()
@@ -22,6 +98,7 @@ func TestCacheInputErrorsPrecedeInstallation(t *testing.T) {
 		{"layout", "--cache-layout=invalid", "cache-layout"},
 		{"compression", "--cache-compression=invalid", "cache-compression"},
 		{"strict", "--cache-strict=typo", "cache-strict"},
+		{"summary", "--summary=typo", "summary"},
 		{"failure", "--cache-save-on-failure=typo", "cache-save-on-failure"},
 		{"age", "--cache-build-max-age=-1h", "nonnegative"},
 		{"bytes", "--cache-max-bytes=0", "max bytes"},

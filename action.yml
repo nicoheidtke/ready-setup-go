@@ -10,6 +10,9 @@ inputs:
   check-latest:
     description: Resolve minor selectors against official releases instead of preferring installed patches.
     default: 'false'
+  summary:
+    description: Write concise toolchain and cache results to the GitHub job summary.
+    default: 'true'
   cache:
     description: Cache mode, off, restore, or restore-save. Cache failures warn unless cache-strict is true.
     default: off

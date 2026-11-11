@@ -30,7 +30,7 @@ jobs:
         shell: bash
         env:
           NODE24: ${{ steps.node-runtime.outputs.path }}
-        run: '"$NODE24" --test launcher.test.cjs .github/actions/cache-benchmark/run.test.cjs .github/actions/node-runtime/locate.test.cjs'
+        run: '"$NODE24" --test launcher.test.cjs .github/actions/cache-benchmark/run.test.cjs .github/actions/node-runtime/locate.test.cjs .github/scripts/cache-probe.test.cjs'
       - name: Check Go formatting
         shell: bash
         run: test -z "$(gofmt -l cmd internal testdata/smoke testdata/packages)"
@@ -114,3 +114,18 @@ jobs:
         run: |
           test "$COLD_ROOT" = "$WARM_ROOT"
           test "$WARM_VERSION" = '1.26.0'
+      - name: Locate action Node runtime for packaged lifecycle fixtures
+        id: lifecycle-node
+        uses: ./.github/actions/node-runtime
+      - name: Native archive and chunked main/post fixtures
+        shell: bash
+        env:
+          SETUP_GO_BETTER_TEST_DIST: ${{ github.workspace }}/dist
+          SETUP_GO_BETTER_TEST_RUNNER_TEMP: ${{ runner.temp }}/installer smoke with spaces
+          SETUP_GO_BETTER_TEST_VERSION: '1.26.0'
+          SETUP_GO_BETTER_TEST_NODE: ${{ steps.lifecycle-node.outputs.path }}
+          SETUP_GO_BETTER_TEST_BASH: bash
+        run: |
+          for storage in archive chunked; do
+            SETUP_GO_BETTER_TEST_STORAGE="$storage" go test ./internal/cache -run '^TestPackagedLifecycle$' -count=1 -v
+          done

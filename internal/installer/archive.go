@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"setup-go-better/internal/actionlog"
 )
 
 // Official Go archives need only directories and regular files. Reject links,
@@ -115,6 +117,7 @@ type measuredReader struct {
 	r        io.Reader
 	bytes    int64
 	duration time.Duration
+	progress *actionlog.Progress
 }
 
 func (r *measuredReader) Read(p []byte) (int, error) {
@@ -122,10 +125,11 @@ func (r *measuredReader) Read(p []byte) (int, error) {
 	n, e := r.r.Read(p)
 	r.duration += time.Since(t)
 	r.bytes += int64(n)
+	r.progress.Add(int64(n))
 	return n, e
 }
 
-func (c Config) install(ctx context.Context, v Version, a archive, m *Metrics) (string, error) {
+func (c Config) install(ctx context.Context, v Version, a archive, m *Metrics) (result string, err error) {
 	want, err := hex.DecodeString(a.SHA256)
 	if err != nil || len(want) != sha256.Size {
 		return "", fmt.Errorf("invalid official SHA-256")
@@ -153,7 +157,9 @@ func (c Config) install(ctx context.Context, v Version, a archive, m *Metrics) (
 		return "", err
 	}
 	defer resp.Body.Close()
-	mr := &measuredReader{r: io.LimitReader(resp.Body, a.Size+1)}
+	progress := actionlog.Default.Progress("Download/extract Go toolchain", "bytes", a.Size)
+	defer func() { progress.Finish(err) }()
+	mr := &measuredReader{r: io.LimitReader(resp.Body, a.Size+1), progress: progress}
 	hash := sha256.New()
 	body := io.TeeReader(mr, hash)
 	extractStart := time.Now()

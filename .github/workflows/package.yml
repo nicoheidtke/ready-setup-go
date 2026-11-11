@@ -1,6 +1,11 @@
 name: Prepare action distribution
 on:
   workflow_dispatch:
+    inputs:
+      attest:
+        description: Generate hosted provenance after successful preparation (requires repository/plan support)
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -19,16 +24,49 @@ jobs:
       - run: go test ./...
       - run: go vet ./...
       - name: Build all six platforms
-        run: go run ./cmd/package --out dist --archives artifacts
+        run: go run ./cmd/package --require-clean --out .cache/package/dist --archives .cache/package/artifacts
       - name: Verify reproducible builds and archives
         shell: bash
         run: |
-          go run ./cmd/package --out dist-repro --archives artifacts-repro
-          diff -r dist dist-repro
-          diff -r artifacts artifacts-repro
+          go run ./cmd/package --require-clean --out .cache/package/dist-repro --archives .cache/package/artifacts-repro
+          diff -r .cache/package/dist .cache/package/dist-repro
+          diff -r .cache/package/artifacts .cache/package/artifacts-repro
+          go run ./cmd/verify-distribution --dist .cache/package/dist --archives .cache/package/artifacts
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: action-distribution
           path: |
-            artifacts/*
+            .cache/package/artifacts/*
+          include-hidden-files: true
+          retention-days: 14
+  attest:
+    if: inputs.attest
+    needs: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # Only the opted-in signing job receives OIDC/attestation permissions.
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: action-distribution
+          path: .cache/attest
+      - name: Recheck same-run artifact payloads before signing
+        working-directory: .cache/attest
+        run: sha256sum -c SHA256SUMS
+      - name: Attest prepared artifacts from this run
+        id: provenance
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
+        with:
+          subject-path: .cache/attest/*
+          create-storage-record: false
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: action-attestation
+          path: ${{ steps.provenance.outputs.bundle-path }}
+          include-hidden-files: true
           retention-days: 14

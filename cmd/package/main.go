@@ -5,7 +5,6 @@ package main
 import (
 	"archive/zip"
 	"crypto/sha256"
-	"encoding/hex"
 	"flag"
 	"fmt"
 	"io"
@@ -14,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"setup-go-better/internal/distribution"
 )
 
 func main() {
@@ -26,8 +27,9 @@ func run() error {
 	out := flag.String("out", "dist", "new or existing output directory")
 	archives := flag.String("archives", "", "optional directory outside output for acquisition experiment assets")
 	host := flag.String("platform", "", "optional single platform, e.g. windows/amd64; default builds all six")
+	clean := flag.Bool("require-clean", false, "reject local changes for release preparation")
 	flag.Parse()
-	platforms := []string{"linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64", "windows/amd64", "windows/arm64"}
+	platforms := distribution.Platforms
 	if *host != "" {
 		valid := false
 		for _, p := range platforms {
@@ -40,7 +42,10 @@ func run() error {
 		}
 		platforms = []string{*host}
 	}
-	var sums strings.Builder
+	provenance, err := distribution.Source(".", platforms, *clean)
+	if err != nil {
+		return err
+	}
 	for _, p := range platforms {
 		parts := strings.Split(p, "/")
 		name := "setup-go-better"
@@ -58,14 +63,9 @@ func run() error {
 		if err := cmd.Run(); err != nil {
 			return err
 		}
-		b, err := os.ReadFile(file)
-		if err != nil {
-			return err
-		}
-		sum := sha256.Sum256(b)
-		fmt.Fprintf(&sums, "%s  %s\n", hex.EncodeToString(sum[:]), filepath.ToSlash(rel))
 	}
-	for _, rel := range []string{"action.yml", "launch.sh", "launch.cjs", "post.cjs", "launcher.cjs", "experimental/composite/action.yml", "experimental/node/action.yml", "experimental/node/launch.cjs", "experimental/node/post.cjs", "README.md", "ROADMAP.md", "AGENTS.md", "docs/USAGE.md", "docs/ARCHITECTURE.md", "docs/COMPARISON.md", "docs/BENCHMARKS.md", "docs/DEVELOPMENT.md", "docs/IMPLEMENTATION_PLAN.md", "docs/validation-2026-09-22.md", "docs/investigation-2026-11-10.md", "internal/cachebackend/PROTOCOL.md"} {
+	files := []string{"action.yml", "launch.sh", "launch.cjs", "post.cjs", "launcher.cjs", "experimental/composite/action.yml", "experimental/node/action.yml", "experimental/node/launch.cjs", "experimental/node/post.cjs", "README.md", "LICENSE", "SECURITY.md", "CONTRIBUTING.md", "ROADMAP.md", "AGENTS.md", "docs/USAGE.md", "docs/ARCHITECTURE.md", "docs/COMPARISON.md", "docs/BENCHMARKS.md", "docs/DEVELOPMENT.md", "docs/IMPLEMENTATION_PLAN.md", "docs/LIFECYCLE_VALIDATION.md", "docs/SECURITY_MODEL.md", "docs/RELEASES.md", "docs/validation-2026-09-22.md", "docs/investigation-2026-11-10.md", "internal/cachebackend/PROTOCOL.md"}
+	for _, rel := range files {
 		b, err := os.ReadFile(rel)
 		if err != nil {
 			return err
@@ -78,7 +78,17 @@ func run() error {
 			return err
 		}
 	}
-	if err := os.WriteFile(filepath.Join(*out, "SHA256SUMS"), []byte(sums.String()), 0644); err != nil {
+	current, err := distribution.Source(".", platforms, *clean)
+	if err != nil {
+		return err
+	}
+	if current.Revision != provenance.Revision || current.Dirty != provenance.Dirty || current.SourceSHA256 != provenance.SourceSHA256 || current.Compiler != provenance.Compiler {
+		return fmt.Errorf("source changed during packaging; discard this output and rebuild")
+	}
+	if err := distribution.WriteProvenance(*out, provenance); err != nil {
+		return err
+	}
+	if err := distribution.WriteChecksums(*out); err != nil {
 		return err
 	}
 	if *archives != "" {

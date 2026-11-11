@@ -18,6 +18,27 @@ on:
         description: Enable on second dispatch after reviewing successful post-save in first run
         type: boolean
         default: false
+      expect-miss:
+        description: Assert no snapshot restored (use a fresh scope or branch-isolation probe)
+        type: boolean
+        default: false
+      expected-match:
+        description: Optional exact comma-separated matched keys from a reviewed seed probe
+        default: ''
+      mode:
+        description: Restore-only never registers post-save
+        type: choice
+        options: [restore-save, restore]
+        default: restore-save
+      outcome:
+        description: Failure is deliberate; cancel-wait requires manual cancellation after the workload
+        type: choice
+        options: [success, failure, cancel-wait]
+        default: success
+      save-on-failure:
+        description: Save after the deliberately failed workload; cancellation must always skip saving
+        type: boolean
+        default: false
       layout:
         type: choice
         description: Archive layout to validate
@@ -63,6 +84,12 @@ jobs:
       GOTOOLCHAIN: local
       GOTELEMETRY: 'off'
     steps:
+      - name: Validate probe assertions
+        shell: bash
+        env:
+          EXPECT_HIT: ${{ inputs.expect-hit }}
+          EXPECT_MISS: ${{ inputs.expect-miss }}
+        run: test "$EXPECT_HIT/$EXPECT_MISS" != true/true
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -85,7 +112,8 @@ jobs:
         uses: ./dist
         with:
           go-version: ${{ inputs.go-version }}
-          cache: restore-save
+          cache: ${{ inputs.mode }}
+          cache-save-on-failure: ${{ inputs.save-on-failure }}
           cache-scope: ${{ inputs.scope }}
           cache-layout: ${{ inputs.layout }}
           cache-chunk-concurrency: ${{ inputs.chunk-concurrency }}
@@ -99,24 +127,47 @@ jobs:
           cache-strict: 'true'
           cache-dependency-path: testdata/packages
           cache-report: cache-reports/restore.json
-      - name: Verify expected warm restore
-        if: inputs.expect-hit
-        shell: bash
+      - name: Record and assert restore provenance
         env:
           CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
           CACHE_BYTES: ${{ steps.cache.outputs.cache-restored-bytes }}
+          CACHE_KEY: ${{ steps.cache.outputs.cache-key }}
+          MATCHED_KEY: ${{ steps.cache.outputs.cache-matched-key }}
+          EXPECT_HIT: ${{ inputs.expect-hit }}
+          EXPECT_MISS: ${{ inputs.expect-miss }}
+          EXPECTED_MATCH: ${{ inputs.expected-match }}
+          PROBE_MODE: ${{ inputs.mode }}
+          PROBE_STORAGE: ${{ inputs.storage }}
+          PROBE_SCOPE: ${{ inputs.scope }}
+          PROBE_OUTCOME: ${{ inputs.outcome }}
+          PROBE_SAVE_FAILURE: ${{ inputs.save-on-failure }}
         run: |
-          test "$CACHE_HIT" = true
-          test "$CACHE_BYTES" -gt 0
+          node .github/scripts/cache-probe.cjs cache-reports/probe.json
       - name: measure/pinned-package-workload
         working-directory: testdata/packages
         run: go test -mod=readonly -count=1 ./...
+      - name: Deliberately fail after populating caches
+        if: inputs.outcome == 'failure'
+        shell: bash
+        run: |
+          echo 'Deliberate policy probe failure; review the actual post step after completion.'
+          exit 1
+      - name: Wait for manual cancellation after populating caches
+        if: inputs.outcome == 'cancel-wait'
+        shell: bash
+        run: |
+          echo 'Cancel this run manually now; the action post-save must not run. No cancellation is automated.'
+          sleep 600
+          echo 'Not cancelled; probe inconclusive.'
+          exit 1
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: cache-restore-report
           # The .post.json report does not exist until normal steps finish.
-          path: cache-reports/restore.json
+          path: |
+            cache-reports/restore.json
+            cache-reports/probe.json
   report:
     if: always()
     needs: cache-validation

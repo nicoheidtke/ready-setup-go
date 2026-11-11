@@ -1,20 +1,24 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"os/signal"
 	"setup-go-better/internal/actionenv"
+	"setup-go-better/internal/actionlog"
 	"setup-go-better/internal/cache"
 	"setup-go-better/internal/installer"
 	"strconv"
+	"strings"
 	"time"
 )
 
-func run() error {
+func run() (runErr error) {
 	if len(os.Args) >= 2 && os.Args[1] == "post" {
 		if len(os.Args) != 2 {
 			return fmt.Errorf("post does not accept arguments")
@@ -29,6 +33,10 @@ func run() error {
 		return fmt.Errorf("usage: setup-go-better setup (--go-version VERSION | --go-version-file FILE) [--check-latest] [--json FILE|-]")
 	}
 	fs := flag.NewFlagSet("setup", flag.ContinueOnError)
+	// Flag diagnostics can contain untrusted argv or environment defaults. Errors
+	// are rendered once by reportError; requested help is logged safely below.
+	var flagOutput bytes.Buffer
+	fs.SetOutput(&flagOutput)
 	v := fs.String("go-version", os.Getenv("INPUT_GO-VERSION"), "exact version or minor selector")
 	versionFile := fs.String("go-version-file", os.Getenv("INPUT_GO-VERSION-FILE"), "go.mod or go.work path; explicit go-version takes precedence")
 	latest := fs.Bool("check-latest", false, "resolve latest official patch")
@@ -50,6 +58,7 @@ func run() error {
 	fs.StringVar(&c.Report, "cache-report", input("CACHE-REPORT", ""), "restore JSON report path; post report adds .post.json")
 	// Register booleans/durations as strings so invalid action inputs fail visibly.
 	strict := fs.String("cache-strict", input("CACHE-STRICT", "false"), "fail on cache errors")
+	summary := fs.String("summary", input("SUMMARY", "true"), "write a concise GitHub job summary")
 	saveFailure := fs.String("cache-save-on-failure", input("CACHE-SAVE-ON-FAILURE", "false"), "save failed (never cancelled) jobs")
 	maxAge := fs.String("cache-build-max-age", input("CACHE-BUILD-MAX-AGE", "0"), "optional archive-only age filter, e.g. 120h; 0 disables")
 	maxBytes := fs.String("cache-max-bytes", input("CACHE-MAX-BYTES", fmt.Sprint(c.MaxBytes)), "maximum archive payload bytes")
@@ -61,12 +70,23 @@ func run() error {
 	downloadWorkers := fs.String("cache-download-concurrency", input("CACHE-DOWNLOAD-CONCURRENCY", fmt.Sprint(c.DownloadConcurrency)), "parallel archive download workers, 1..32; 1 uses a single GET")
 	downloadChunk := fs.String("cache-download-chunk-bytes", input("CACHE-DOWNLOAD-CHUNK-BYTES", fmt.Sprint(c.DownloadChunkBytes)), "archive download range size bytes")
 	if err := fs.Parse(os.Args[2:]); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			for _, line := range strings.Split(strings.TrimSuffix(flagOutput.String(), "\n"), "\n") {
+				actionlog.Default.Printf("%s\n", line)
+			}
+			return nil
+		}
 		return err
 	}
 	if fs.NArg() != 0 {
 		return fmt.Errorf("unexpected positional arguments")
 	}
 	var err error
+	showSummary, err := strconv.ParseBool(*summary)
+	if err != nil {
+		return fmt.Errorf("summary: %w", err)
+	}
+	c.DisableSummary = !showSummary
 	if c.Overlap, err = strconv.ParseBool(*overlap); err != nil {
 		return fmt.Errorf("cache-overlap: %w", err)
 	}
@@ -106,10 +126,18 @@ func run() error {
 	if err = c.Validate(); err != nil {
 		return err
 	}
+	summaryWritten := false
+	defer func() {
+		if !summaryWritten && runErr != nil {
+			actionlog.Default.Summary(c.DisableSummary, "Go setup", []string{"Result", "Reason"}, []actionlog.SummaryRow{{"ERROR", runErr.Error()}})
+		}
+	}()
 	workspace := ""
 	if os.Getenv("GITHUB_ACTIONS") == "true" {
 		workspace = os.Getenv("GITHUB_WORKSPACE")
 	}
+	endResolution := actionlog.Default.Stage("Resolve Go version")
+	defer endResolution()
 	version, err := installer.ResolveVersionInput(*v, *versionFile, workspace)
 	if err != nil {
 		return err
@@ -124,7 +152,17 @@ func run() error {
 			pending.Close()
 		}
 	}()
-	r, err := installer.DefaultConfig().SetupResolved(ctx, version, *latest, func(selected string) { pending = cache.BeginPrefetch(ctx, c, selected) })
+	endToolchain := func() {}
+	defer func() { endToolchain() }()
+	r, err := installer.DefaultConfig().SetupResolved(ctx, version, *latest, func(selected string) {
+		endResolution()
+		title := "Prepare Go toolchain"
+		if c.Mode != "off" && c.Overlap {
+			title += " (cache prefetch runs concurrently)"
+		}
+		endToolchain = actionlog.Default.Stage(title)
+		pending = cache.BeginPrefetch(ctx, c, selected)
+	})
 	if err != nil {
 		return err
 	}
@@ -146,7 +184,15 @@ func run() error {
 			return err
 		}
 	}
-	fmt.Fprintf(os.Stderr, "Go %s: %s (%s, %.1f ms)\n", r.Version, r.Root, r.Source, r.Metrics.TotalMS)
+	source := map[string]string{"runner-tool-cache": "reused runner tool cache", "installed": "reused installed toolchain", "download": "downloaded and verified official toolchain"}[r.Source]
+	if source == "" {
+		source = "toolchain prepared"
+	}
+	actionlog.Default.Printf("Go %s %s · %s · %s\n", r.Version, actionlog.Default.Status("READY"), source, actionlog.Duration(r.Metrics.TotalMS))
+	actionlog.Default.DebugJSON("toolchain result", r)
+	actionlog.Default.Summary(c.DisableSummary, "Go toolchain", []string{"Go", "Result", "Source", "Setup work"}, []actionlog.SummaryRow{{r.Version, "READY", source, actionlog.Duration(r.Metrics.TotalMS)}}, "Toolchain work may overlap cache prefetch; phase durations are not additive.")
+	summaryWritten = true
+	endToolchain()
 	if c.Mode == "restore-save" {
 		if err = actionenv.Environment("SETUP_GO_BETTER_SAVE_ON_FAILURE_"+os.Getenv("GITHUB_ACTION"), fmt.Sprint(c.SaveOnFailure)); err != nil {
 			return err
@@ -156,7 +202,7 @@ func run() error {
 }
 func main() {
 	if err := run(); err != nil {
-		fmt.Fprintln(os.Stderr, "setup-go-better:", err)
+		reportError(err)
 		os.Exit(1)
 	}
 }

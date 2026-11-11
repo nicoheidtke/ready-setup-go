@@ -13,12 +13,14 @@ Supports **Go 1.26+** on Linux, macOS and Windows, each on amd64 and arm64. Cach
 Check out your project, then pin a bundled preview:
 
 ```yaml
+permissions:
+  contents: read
 jobs:
   test:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: nicoheidtke/setup-go-better@e6e119a8b0b524a6ac1606d660c48603c11753df
+      - uses: nicoheidtke/setup-go-better@4871ed7af80f1f2eede85493da35d67abbab64cf
         with:
           go-version-file: go.mod
           cache: restore-save
@@ -37,5 +39,6 @@ GitHub's official action offers broader version syntax and familiar defaults. Th
 
 - **Using the action:** [usage and reference](docs/USAGE.md), [comparison](docs/COMPARISON.md), [action metadata](action.yml).
 - **How it works:** [architecture and resource behavior](docs/ARCHITECTURE.md), [cache service protocol](internal/cachebackend/PROTOCOL.md).
-- **Building and contributing:** [development and releases](docs/DEVELOPMENT.md), [roadmap](ROADMAP.md), [implementation plan](docs/IMPLEMENTATION_PLAN.md), [agent handoff](AGENTS.md).
+- **Building and contributing:** [contribution and support guide](CONTRIBUTING.md), [development and releases](docs/DEVELOPMENT.md), [roadmap](ROADMAP.md), [implementation plan](docs/IMPLEMENTATION_PLAN.md), [agent handoff](AGENTS.md).
 - **Evidence and measurement:** [benchmark methodology](docs/BENCHMARKS.md), [initial validation](docs/validation-2026-09-22.md), [Exasol cache investigation](docs/investigation-2026-11-10.md).
+- **Security and license:** [security policy](SECURITY.md), [permissions and cache trust](docs/SECURITY_MODEL.md), [MIT license](LICENSE).

@@ -18,10 +18,19 @@ function invocation(root, post, env = process.env, platform = process.platform, 
 }
 
 function run(root, post, spawn = spawnSync) {
-  const call = invocation(root, post);
-  if (!call) return;
-  const child = spawn(call.binary, call.args, { stdio: 'inherit', shell: false });
-  if (child.error) throw child.error;
-  process.exitCode = child.status === null ? 1 : child.status;
+  try {
+    const call = invocation(root, post);
+    if (!call) return;
+    const child = spawn(call.binary, call.args, { stdio: 'inherit', shell: false });
+    if (child.error) throw child.error;
+    process.exitCode = child.status === null ? 1 : child.status;
+  } catch {
+    // Never print raw spawn errors, arguments or paths: these can contain input
+    // text and credentials. Native failures already annotate their own errors.
+    const message = 'Unable to start the native action. Pin a bundled distribution (source-only commits lack executables), use Linux/macOS/Windows on amd64/arm64, and check executable permissions.';
+    console.error(process.env.GITHUB_ACTIONS === 'true'
+      ? `::error title=Start setup-go-better::${message}` : `ERROR Start setup-go-better: ${message}`);
+    process.exitCode = 1;
+  }
 }
 module.exports = { invocation, run };

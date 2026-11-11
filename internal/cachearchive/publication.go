@@ -8,6 +8,8 @@ import (
 	"io/fs"
 	"os"
 	"sync"
+
+	"setup-go-better/internal/actionlog"
 )
 
 type publicationJob struct {
@@ -20,8 +22,7 @@ type publicationJob struct {
 // publishFiles owns the worker lifetime. Every worker has private counters and
 // a fixed copy buffer; callers may clean up staging and restore directory modes
 // only after this function joins all workers, including on failure/cancellation.
-func publishFiles(ctx context.Context, jobs []publicationJob, workers int, publish func(context.Context, publicationJob, []byte, *Stats) error) (Stats, error) {
-	var total Stats
+func publishFiles(ctx context.Context, jobs []publicationJob, workers int, publish func(context.Context, publicationJob, []byte, *Stats) error) (total Stats, err error) {
 	if workers < 1 || workers > 16 {
 		return total, errors.New("restore publication concurrency must be 1..16")
 	}
@@ -32,15 +33,19 @@ func publishFiles(ctx context.Context, jobs []publicationJob, workers int, publi
 		return total, nil
 	}
 	workers = min(workers, len(jobs))
+	progress := actionlog.Default.Progress("Publish validated cache files", "files published", 0)
+	defer func() { progress.Finish(err) }()
 	if workers == 1 {
 		buf := make([]byte, 32*1024)
 		for _, job := range jobs {
 			if err := ctx.Err(); err != nil {
 				return total, err
 			}
+			before := total.PublishedFiles
 			if err := publish(ctx, job, buf, &total); err != nil {
 				return total, err
 			}
+			progress.Add(total.PublishedFiles - before)
 		}
 		return total, nil
 	}
@@ -60,10 +65,12 @@ func publishFiles(ctx context.Context, jobs []publicationJob, workers int, publi
 				if ctx.Err() != nil {
 					return
 				}
+				before := results[worker].PublishedFiles
 				if err := publish(ctx, job, buf, &results[worker]); err != nil {
 					first.Do(func() { firstErr = err; cancel() })
 					return
 				}
+				progress.Add(results[worker].PublishedFiles - before)
 			}
 		}()
 	}

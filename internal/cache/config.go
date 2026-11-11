@@ -43,6 +43,7 @@ type Config struct {
 	Strict                 bool          `json:"strict"`
 	SaveOnFailure          bool          `json:"save_on_failure"`
 	Report                 string        `json:"report,omitempty"`
+	DisableSummary         bool          `json:"disable_summary,omitempty"`
 }
 
 func DefaultConfig() Config {

@@ -224,8 +224,14 @@ func TestRangeDownloadCancellationJoinsWorkers(t *testing.T) {
 			f := downloadFile(t)
 			c := Client{DownloadConcurrency: 3, DownloadBlockSize: 4}
 			n, err := c.Download(ctx, Entry{URL: server.URL + "?sig=" + secret}, f)
-			if err == nil || (!failure && !errors.Is(err, context.Canceled)) || (failure && !strings.Contains(err.Error(), "HTTP 500")) || n != 4 || seen.Load() != 3 {
-				t.Fatalf("n=%d workers=%d err=%v", n, seen.Load(), err)
+			wantRequests := int32(3)
+			if failure {
+				// The failing range exhausts three request attempts while the
+				// other two workers remain blocked, then all workers join.
+				wantRequests = 5
+			}
+			if err == nil || (!failure && !errors.Is(err, context.Canceled)) || (failure && !strings.Contains(err.Error(), "HTTP 500")) || n != 4 || seen.Load() != wantRequests {
+				t.Fatalf("n=%d requests=%d err=%v", n, seen.Load(), err)
 			}
 			// Closing immediately after return is safe: client workers have all joined.
 			if err := f.Close(); err != nil {

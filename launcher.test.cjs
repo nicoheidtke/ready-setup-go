@@ -33,7 +33,17 @@ test('post with no saved state does not start a process', () => {
 });
 
 test('spawn errors and signal termination fail the action', () => {
-  assert.throws(() => run(__dirname, false, () => ({ error: new Error('missing executable') })), /missing executable/);
+  const messages = [];
+  const oldError = console.error;
+  console.error = value => messages.push(value);
+  try {
+    run(__dirname, false, () => ({ error: new Error('missing executable\n::error::private-token') }));
+  } finally {
+    console.error = oldError;
+  }
+  assert.equal(process.exitCode, 1);
+  assert.match(messages[0], /Pin a bundled distribution/);
+  assert.ok(!messages[0].includes('private-token'));
   run(__dirname, false, () => ({ status: null }));
   assert.equal(process.exitCode, 1);
   process.exitCode = 0;
@@ -43,6 +53,7 @@ test('metadata uses unique per-action job-status policy and both launchers are p
   const metadata = fs.readFileSync(path.join(__dirname, 'action.yml'), 'utf8');
   const alias = fs.readFileSync(path.join(__dirname, 'experimental/node/action.yml'), 'utf8');
   assert.equal(metadata, alias);
+  assert.match(metadata, /  summary:\r?\n    description: [^\r\n]+\r?\n    default: 'true'/);
   assert.ok(metadata.includes("post-if: \"!cancelled() && (success() || env[format('SETUP_GO_BETTER_SAVE_ON_FAILURE_{0}', github.action)] == 'true')\""));
   assert.ok(!metadata.includes('inputs.cache-save-on-failure'));
   const packaging = fs.readFileSync(path.join(__dirname, 'cmd/package/main.go'), 'utf8');
