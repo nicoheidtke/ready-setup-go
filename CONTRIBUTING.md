@@ -10,6 +10,8 @@ Discuss changes to inputs, cache compatibility or defaults in an issue before a 
 
 ## Local checks
 
+Source files use LF line endings through `.gitattributes` and `.editorconfig`. If a Windows installation inherits automatic CRLF conversion, align this checkout with `git config --local core.autocrlf false` and `git config --local core.eol lf`; global Git settings need not change. Release packages have their own `.gitattributes` to preserve exact checksummed bytes, so do not normalize packaged files after building them.
+
 Use the supported compiler versions recorded in the development guide. After changing Go or launcher behavior, run the relevant checks:
 
 ```text

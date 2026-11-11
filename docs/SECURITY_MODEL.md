@@ -32,7 +32,7 @@ jobs:
     cache-mode: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: nicoheidtke/setup-go-better@4871ed7af80f1f2eede85493da35d67abbab64cf
+      - uses: nicoheidtke/setup-go-better@952566112acde233b6b762a78ebbceb743605f9a
         with:
           go-version-file: go.mod
           cache: restore

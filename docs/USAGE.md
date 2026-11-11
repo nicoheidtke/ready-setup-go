@@ -4,9 +4,7 @@ Return to the [project overview](../README.md), see the [comparison with setup-g
 
 ## Usage
 
-Examples pin bundled preview `4871ed7af80f1f2eede85493da35d67abbab64cf` (`v0.0.0-preview.20261110`), which includes all six native executables. Always pin a **bundled distribution commit** supporting the inputs you use; source-only revisions cannot run directly as an action.
-
-This reference describes the current source interface. The grouped/color logging, progress, debug diagnostics, job summaries (`summary` input), richer cache result fields and bounded retries added on 2026-11-11 are not in that published preview. A distribution rebuilt from this source includes them; see [local packaging and verification](RELEASES.md#prepare-and-verify-locally). Use a subsequently published bundled revision when one is available. The examples below use inputs supported by the pinned preview.
+Examples pin bundled preview `952566112acde233b6b762a78ebbceb743605f9a` (`v0.0.0-preview.20261111`), which includes all six native executables. Always pin a **bundled distribution commit** supporting the inputs you use; source-only revisions cannot run directly as an action.
 
 If the action repository is private, the workflow must have permission to access it. Where direct private-action sharing is unavailable, check out the bundled revision using a token with read access to that repository, then invoke its local path. The token is for acquisition, not a setup-go-better input:
 
@@ -15,7 +13,7 @@ If the action repository is private, the workflow must have permission to access
 - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
   with:
     repository: nicoheidtke/setup-go-better
-    ref: 4871ed7af80f1f2eede85493da35d67abbab64cf
+    ref: 952566112acde233b6b762a78ebbceb743605f9a
     token: ${{ secrets.SETUP_GO_BETTER_TOKEN }}
     path: .github/private-actions/setup-go-better
     persist-credentials: false
@@ -33,7 +31,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: nicoheidtke/setup-go-better@4871ed7af80f1f2eede85493da35d67abbab64cf
+      - uses: nicoheidtke/setup-go-better@952566112acde233b6b762a78ebbceb743605f9a
         with:
           go-version: '1.26.x'
           cache: restore-save
@@ -46,7 +44,7 @@ Exact versions, such as `1.26.8`, reuse an installed match without a network req
 Alternatively, read the checked-out project's version file:
 
 ```yaml
-- uses: nicoheidtke/setup-go-better@4871ed7af80f1f2eede85493da35d67abbab64cf
+- uses: nicoheidtke/setup-go-better@952566112acde233b6b762a78ebbceb743605f9a
   with:
     go-version-file: go.mod
     cache: restore-save
@@ -97,7 +95,7 @@ Snapshots include operating system, architecture, exact selected Go version, rep
 Restore first looks for recent dependency-matching snapshots, then compatible snapshots in the same namespace so dependency changes can reuse existing objects. GitHub enforces branch visibility and default-branch fallback. Build/test/lint jobs have separate job identities; matrix variants within one job must include their differing dimensions in `cache-scope`:
 
 ```yaml
-- uses: nicoheidtke/setup-go-better@4871ed7af80f1f2eede85493da35d67abbab64cf
+- uses: nicoheidtke/setup-go-better@952566112acde233b6b762a78ebbceb743605f9a
   with:
     go-version: '${{ matrix.go }}'
     cache: restore-save

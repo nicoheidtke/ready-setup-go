@@ -5,6 +5,7 @@ Set up Go in GitHub Actions with optional, fresh module and build caches for eac
 - Reuse matching installed Go versions or download verified official releases.
 - Keep recent build/test/lint snapshots without waiting for dependencies to change.
 - Choose no caching, restore-only, or automatic post-job saves, with configurable storage and detailed cache reports.
+- Follow setup and caching through grouped logs, progress updates and job summaries.
 
 Supports **Go 1.26+** on Linux, macOS and Windows, each on amd64 and arm64. Caching is **off by default**.
 
@@ -20,7 +21,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: nicoheidtke/setup-go-better@4871ed7af80f1f2eede85493da35d67abbab64cf
+      - uses: nicoheidtke/setup-go-better@952566112acde233b6b762a78ebbceb743605f9a
         with:
           go-version-file: go.mod
           cache: restore-save
