@@ -11,7 +11,7 @@ import (
 // Keep the shipped surface explicit: runner entrypoints and consumer documentation.
 // Contributor guidance and development tools remain in the source repository.
 var packagedFiles = []string{
-	"action.yml", "launch.sh", "launch.cjs", "post.cjs", "launcher.cjs",
+	"action.yml", "launch.sh", "launch.cjs", "post.cjs", "launcher.cjs", "native-download.cjs",
 	"experimental/composite/action.yml", "experimental/node/action.yml",
 	"experimental/node/launch.cjs", "experimental/node/post.cjs",
 	"README.md", "LICENSE", "THIRD_PARTY_NOTICES.txt", "SECURITY.md", "docs/USAGE.md",

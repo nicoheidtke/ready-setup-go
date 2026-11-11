@@ -4,7 +4,7 @@ Return to the [project overview](../README.md), see the [comparison with setup-g
 
 ## Usage
 
-Examples pin bundled preview `952566112acde233b6b762a78ebbceb743605f9a` (`v0.0.0-preview.20261111`), which includes all six native executables. Always pin a **bundled distribution commit** supporting the inputs you use; source-only revisions cannot run directly as an action.
+Examples pin bundled preview `952566112acde233b6b762a78ebbceb743605f9a` (`v0.0.0-preview.20261111`), which includes all six native executables. Always pin a **distribution commit** (bundled or lightweight) supporting the inputs you use; source-only revisions cannot run directly as an action.
 
 ```yaml
 permissions:
@@ -124,6 +124,12 @@ Enable [GitHub step debug logging](https://docs.github.com/en/actions/how-tos/mo
 `cache-report` retains preparation, lookup, transfer, archive times, payload/file counts, keys, matches, skips, and errors. Chunk reports include reuse counts/bytes. `match_type` distinguishes exact/compatible dependency matches; only `hit` establishes successful restoration. `restore_reason` explains misses/errors. JSON reports contain full paths/keys; review them before sharing, as described in the [security model](SECURITY_MODEL.md).
 
 Post saves occur after regular steps. An earlier artifact-upload step cannot collect `<cache-report>.post.json`; use completed debug logs or a later collector. See [measurement boundaries](BENCHMARKS.md#metric-boundaries) before interpreting phase timings or bytes.
+
+## Action acquisition
+
+Choose a published distribution commit, not a source commit. Existing previews and default packages bundle all six native executables and need no action-binary download. Maintainers can also prepare a lightweight distribution with a pinned native-download manifest; the same root action and `experimental/node` entrypoints then download only the runner platform's executable. This is a distribution choice, not a `with:` input: changing an input cannot reduce the repository archive GitHub already acquired.
+
+Lightweight mode verifies exact byte size and SHA-256 from the pinned distribution before executing, and rechecks its temporary copy for post-job reuse. It requires unauthenticated access to the manifest's public GitHub release assets. No `GITHUB_TOKEN`, PAT, or cache credential is forwarded. Use bundled mode for private release assets, offline runners, or environments that cannot reach GitHub asset CDNs. Missing/corrupt downloads fail setup; there is no unverified or alternate-version fallback. The installer-only Bash composite requires a bundled distribution and reports that requirement explicitly for lightweight packages. The preview pinned in the examples above remains bundled.
 
 ## Installation and platforms
 

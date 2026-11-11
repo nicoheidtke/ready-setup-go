@@ -59,3 +59,5 @@ test('metadata uses unique per-action job-status policy and both launchers are p
   const packaging = fs.readFileSync(path.join(__dirname, 'cmd/package/manifest.go'), 'utf8');
   for (const file of ['launcher.cjs', 'launch.cjs', 'post.cjs', 'experimental/node/post.cjs', 'experimental/composite/action.yml']) assert.ok(packaging.includes(`"${file}"`));
 });
+
+require('./native-download.test.cjs');

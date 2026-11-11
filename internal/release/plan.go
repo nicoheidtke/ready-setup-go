@@ -198,6 +198,9 @@ func (r *Runner) CreatePlan(ctx context.Context, c Config) (*Plan, error) {
 		return nil, fmt.Errorf("two distinct build copies are required")
 	}
 	for _, pair := range [][2]string{{c.Dist, c.Assets}, {c.ReproDist, c.ReproAssets}} {
+		if err = distribution.CheckNativeRelease(pair[0], c.Repository, c.Tag); err != nil {
+			return nil, err
+		}
 		if err = distribution.Verify(pair[0], pair[1], false, ""); err != nil {
 			return nil, err
 		}
@@ -269,6 +272,9 @@ func (r *Runner) Validate(ctx context.Context, p *Plan) error {
 	root, err := filepath.Abs(r.Root)
 	if err != nil || root != p.Config.Root {
 		return fmt.Errorf("plan belongs to a different source checkout")
+	}
+	if err = distribution.CheckNativeRelease(p.Config.Dist, p.Config.Repository, p.Config.Tag); err != nil {
+		return err
 	}
 	if err = distribution.Verify(p.Config.Dist, p.Config.Assets, false, ""); err != nil {
 		return err

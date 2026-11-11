@@ -27,8 +27,17 @@ func run() error {
 	out := flag.String("out", "dist", "new or empty output directory")
 	archives := flag.String("archives", "", "optional directory outside output for acquisition experiment assets")
 	host := flag.String("platform", "", "optional single platform, e.g. windows/amd64; default builds all six")
+	downloadBase := flag.String("native-download-base", "", "produce a lightweight Node distribution fetching verified native assets from a fixed GitHub release URL; requires --archives")
 	clean := flag.Bool("require-clean", false, "reject local changes for release preparation")
 	flag.Parse()
+	if *downloadBase != "" {
+		if *archives == "" {
+			return fmt.Errorf("--native-download-base requires --archives")
+		}
+		if err := distribution.ValidateDownloadBase(*downloadBase); err != nil {
+			return err
+		}
+	}
 	platforms := distribution.Platforms
 	if *host != "" {
 		valid := false
@@ -49,6 +58,14 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	binaries := *out
+	if *downloadBase != "" {
+		binaries, err = os.MkdirTemp("", "setup-go-better-package-*")
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(binaries)
+	}
 	for _, p := range platforms {
 		parts := strings.Split(p, "/")
 		name := "setup-go-better"
@@ -56,7 +73,7 @@ func run() error {
 			name += ".exe"
 		}
 		rel := filepath.Join("bin", strings.Join(parts, "-"), name)
-		file := filepath.Join(*out, rel)
+		file := filepath.Join(binaries, rel)
 		if err := os.MkdirAll(filepath.Dir(file), 0755); err != nil {
 			return err
 		}
@@ -73,11 +90,19 @@ func run() error {
 			return err
 		}
 		b = sourceDocumentLinks(b, rel, provenance.Revision)
+		if *downloadBase != "" && (rel == "action.yml" || rel == "experimental/node/action.yml") {
+			b = []byte(strings.ReplaceAll(string(b), "no runtime downloads of the action itself", "verified matching-platform executable downloads"))
+		}
 		dst := filepath.Join(*out, filepath.FromSlash(rel))
 		if err = os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
 			return err
 		}
 		if err = os.WriteFile(dst, b, 0644); err != nil {
+			return err
+		}
+	}
+	if *downloadBase != "" {
+		if err := distribution.WriteNativeDownloads(*out, binaries, *downloadBase, platforms); err != nil {
 			return err
 		}
 	}
@@ -98,12 +123,16 @@ func run() error {
 		return err
 	}
 	if *archives != "" {
-		return makeArchives(*out, *archives, platforms)
+		return makeArchivesFrom(*out, *archives, platforms, binaries)
 	}
 	return nil
 }
 
 func makeArchives(root, out string, platforms []string) error {
+	return makeArchivesFrom(root, out, platforms, root)
+}
+
+func makeArchivesFrom(root, out string, platforms []string, binaries string) error {
 	absRoot, e := filepath.Abs(root)
 	if e != nil {
 		return e
@@ -187,7 +216,7 @@ func makeArchives(root, out string, platforms []string) error {
 		if strings.HasPrefix(platform, "windows/") {
 			name += ".exe"
 		}
-		b, e := os.ReadFile(filepath.Join(root, "bin", strings.ReplaceAll(platform, "/", "-"), name))
+		b, e := os.ReadFile(filepath.Join(binaries, "bin", strings.ReplaceAll(platform, "/", "-"), name))
 		if e != nil {
 			return e
 		}

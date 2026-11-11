@@ -426,3 +426,78 @@ func TestHTTPBoundarySanitizesRedirectsAndTransportFailures(t *testing.T) {
 		t.Fatal("cancelled request leaked", err)
 	}
 }
+
+// A thin candidate retains all native assets but commits only the pinned manifest
+// and runtime files. Exercise the actual planning/prepare paths, not just parsing.
+func TestLightweightReleasePlanAndPrepare(t *testing.T) {
+	r, p, planPath, _ := fixture(t)
+	base := "https://github.com/" + p.Config.Repository + "/releases/download/" + p.Config.Tag
+	for _, pair := range [][2]string{{p.Config.Dist, p.Config.Assets}, {p.Config.ReproDist, p.Config.ReproAssets}} {
+		if err := distribution.WriteNativeDownloads(pair[0], pair[0], base, distribution.Platforms); err != nil {
+			t.Fatal(err)
+		}
+		for _, platform := range distribution.Platforms {
+			if err := os.Remove(filepath.Join(pair[0], filepath.FromSlash(distribution.Binary(platform)))); err != nil {
+				t.Fatal(err)
+			}
+		}
+		write(t, pair[0], "native-download.cjs", []byte("bootstrap"))
+		if err := distribution.WriteChecksums(pair[0]); err != nil {
+			t.Fatal(err)
+		}
+		files, err := hashes(pair[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, variant := range []string{"bundled", "launcher"} {
+			f, err := os.Create(filepath.Join(pair[1], variant+".zip"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			z := zip.NewWriter(f)
+			for _, name := range sortedKeys(files) {
+				h := zip.FileHeader{Name: name, Method: zip.Deflate}
+				h.SetMode(0644)
+				w, err := z.CreateHeader(&h)
+				if err != nil {
+					t.Fatal(err)
+				}
+				data, err := os.ReadFile(filepath.Join(pair[0], filepath.FromSlash(name)))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err = w.Write(data); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := z.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := f.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := distribution.WriteChecksums(pair[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	planned, err := r.CreatePlan(context.Background(), p.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Prepare(context.Background(), planned, planPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.verifyCommit(context.Background(), planned); err != nil {
+		t.Fatal(err)
+	}
+	wrong := p.Config
+	wrong.Tag = "v0.0.0-preview.20261112"
+	if _, err := r.CreatePlan(context.Background(), wrong); err == nil || !strings.Contains(err.Error(), "locator") {
+		t.Fatalf("wrong release tag accepted: %v", err)
+	}
+	planned.Config.Repository = "other/action"
+	if err := r.Validate(context.Background(), planned); err == nil || !strings.Contains(err.Error(), "locator") {
+		t.Fatalf("mismatched release accepted: %v", err)
+	}
+}

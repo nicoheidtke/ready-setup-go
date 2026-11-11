@@ -15,7 +15,7 @@ Choose the official action for broad compatibility and established defaults. Con
 | Transfer | Toolkit archive handling; zstd where available, gzip fallback. [Compression](https://github.com/actions/toolkit/blob/main/packages/cache/src/internal/cacheUtils.ts#L93). | Bundled gzip/zstd/none codecs; install/prefetch overlap; configurable transfer workers; optional content-defined chunk reuse. |
 | Scope/extras | Architecture override, mirrors, problem matchers and GHES guidance. [Options](https://github.com/actions/setup-go/blob/b7ad1dad31e06c5925ef5d2fc7ad053ef454303e/action.yml). | Hosted Linux/macOS/Windows on amd64/arm64; JSON reports and standalone installer. No mirror/architecture override or matchers; see [validation boundaries](DEVELOPMENT.md). |
 
-Both use Node 24 and prebuilt action code; neither builds the installer on consumer runners. This action bundles six native executables.
+Both use Node 24 and prebuilt action code; neither builds the installer on consumer runners. This action bundles six native executables by default; optional lightweight distributions fetch only the matching platform executable, verified against pinned metadata.
 
 What you gain and pay for:
 

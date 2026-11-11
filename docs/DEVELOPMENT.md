@@ -20,7 +20,7 @@ Start with [CONTRIBUTING.md](../CONTRIBUTING.md) for prerequisites, checks, and 
 | `experimental/` | Node alias and installer-only Bash comparison |
 | `testdata/`, `.github/` | Workloads, fixtures, and manual workflows |
 
-Runtime Go code uses the standard library plus the pinned `github.com/klauspost/compress/zstd` codec. Consumers use bundled executables without building the action, installing npm packages, or installing compression tools. Source-only revisions cannot run as actions.
+Runtime Go code uses the standard library plus the pinned `github.com/klauspost/compress/zstd` codec. Consumers use bundled executables without building the action, installing npm packages, or installing compression tools. Source-only revisions cannot run as actions. Optional lightweight distribution packaging adds a verified public-asset bootstrap; see [release procedures](RELEASES.md#lightweight-distributions).
 
 ## Maintained interfaces
 
@@ -44,7 +44,8 @@ go run ./cmd/package --platform windows/amd64 --out .cache/native-dist
 
 | Variable | Value |
 | --- | --- |
-| `SETUP_GO_BETTER_TEST_DIST` | Absolute distribution directory |
+| `SETUP_GO_BETTER_TEST_DIST` | Absolute bundled or lightweight distribution directory |
+| `SETUP_GO_BETTER_TEST_NATIVE_ASSETS` | For lightweight distributions, the matching local packaged asset directory; injects a file-stream transport and isolates bootstrap reuse without contacting GitHub |
 | `SETUP_GO_BETTER_TEST_RUNNER_TEMP` | Parent of `setup-go-better/toolchains/<version>/<os>-<arch>/bin/go[.exe]` |
 | `SETUP_GO_BETTER_TEST_VERSION` | Installed exact version; default `1.26.4` |
 | `SETUP_GO_BETTER_TEST_STORAGE` | Run once with `archive`, once with `chunked` |
@@ -56,7 +57,7 @@ go run ./cmd/package --platform windows/amd64 --out .cache/native-dist
 go test ./internal/cache -run '^TestPackagedLifecycle$' -count=1 -v
 ```
 
-The test exercises root main/post, the Node alias, reports/state/summaries, real compilation, and offline Bash reuse against a loopback cache-v2 fixture. Without the distribution variable it is skipped. Unit fixtures cover archive safety, existing-file priority, read-only modules, cancellation/worker cleanup, access-policy changes, and forced immutable-writer races.
+The test exercises root main/post, the Node alias, reports/state/summaries, real compilation, and offline Bash reuse against a loopback cache-v2 fixture. Without the distribution variable it is skipped. For lightweight distributions, the native-assets variable is required; the fixture verifies one bootstrap acquisition across main/post and the Node alias using actual packaged executable bytes. This injected local transport does not validate public GitHub redirects, private repository access, or hosted performance. Unit fixtures cover archive safety, existing-file priority, read-only modules, cancellation/worker cleanup, access-policy changes, and forced immutable-writer races.
 
 ### Hosted lifecycle
 

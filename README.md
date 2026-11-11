@@ -30,7 +30,7 @@ jobs:
 
 You can also set `go-version: '1.26.x'` or an exact patch. Minor selectors prefer an installed matching patch; `check-latest: true` requests the latest available patch. Version files support `go.mod` and `go.work`.
 
-For matrices, include the differing dimensions in `cache-scope`. Use `cache: restore` to avoid post-job uploads. See the [usage guide and full input reference](docs/USAGE.md) for examples and standalone use. Pin a bundled distribution; source-only commits cannot run as an action.
+For matrices, include the differing dimensions in `cache-scope`. Use `cache: restore` to avoid post-job uploads. See the [usage guide and full input reference](docs/USAGE.md) for examples and standalone use. Pin a published distribution; source-only commits cannot run as an action. The default bundle is self-contained; maintainers can also publish lightweight distributions that download only the matching platform executable. See [action acquisition](docs/USAGE.md#action-acquisition) for access requirements.
 
 ## Compared with actions/setup-go
 

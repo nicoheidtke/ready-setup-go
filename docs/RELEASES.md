@@ -1,6 +1,6 @@
 # Release procedures
 
-Consumers need distribution commits containing generated executables; source commits are not runnable actions. Keep source/distribution revisions, compiler, checksums, and validation results with each release. [Development](DEVELOPMENT.md) records current support limits and published provenance.
+Consumers need distribution commits containing generated executables or a pinned native-download manifest; source commits are not runnable actions. Keep source/distribution revisions, compiler, checksums, and validation results with each release. [Development](DEVELOPMENT.md) records current support limits and published provenance.
 
 ## Build and verify
 
@@ -21,6 +21,18 @@ Preserve the packaged `.gitattributes`: it prevents checkout text conversion fro
 For native diagnostics, supply the same `--platform windows/amd64` (or other target) to packaging and verification. Dirty builds omit `--require-clean`, require verification's `--allow-dirty`, and record `<HEAD>-dirty`; they are not release candidates. The source digest covers sorted nonignored working-tree paths/content, including untracked files and deletion markers; it excludes ignored files and filesystem modes. Keep outputs ignored or outside the source tree. Bundles include runtime files, consumer documentation, and `THIRD_PARTY_NOTICES.txt` with bundled dependency licenses; links to development-only guides point to the source commit. In dirty diagnostic builds those links refer to the base commit, not uncommitted edits.
 
 Checksums detect corruption relative to a manifest, not publisher identity. An attacker replacing both can pass verification. Authenticate the release separately; rebuild reviewed source and compare bytes to establish reproducibility.
+
+## Lightweight distributions
+
+Default packaging remains bundled. To prepare a lightweight root action, choose the dated release tag before building and use the same fixed public locator for both reproducibility builds:
+
+```text
+go run ./cmd/package --require-clean --out .cache/release/dist --archives .cache/release/artifacts --native-download-base https://github.com/OWNER/REPO/releases/download/v0.0.0-preview.YYYYMMDD
+```
+
+Repeat with fresh reproduction directories and identical arguments, then run the ordinary distribution verifier. This mode compiles the requested platform set privately, writes exact sizes and SHA-256 values to `NATIVE_DOWNLOADS.json`, emits a distribution without `bin/`, and retains the same standalone native release assets. Both ZIP names remain part of the existing nine-asset publication contract; without bundled binaries their payloads are identical. Do not reuse an earlier bundled directory: packaging requires empty outputs. `--native-download-base` requires `--archives`; `--platform` still permits local single-target diagnostics.
+
+The normal release plan/prepare/publish commands work for either distribution. Planning and subsequent validation require the manifest locator to name the selected repository and tag; asset verification compares every native size/digest against the pinned manifest. Publish all native assets before consumers use the lightweight distribution. Pin the resulting lightweight distribution commit, not the source commit or a stripped older bundle. Release URLs are mutable locators, not an authenticity guarantee; pinned digests prevent substituted bytes from executing, while asset deletion can still break availability. Private release authentication is deliberately unsupported by the bootstrap, so retain bundled distributions for private/offline use. No live publication or hosted acquisition is implied by local packaging checks.
 
 ## Plan, prepare, and publish
 

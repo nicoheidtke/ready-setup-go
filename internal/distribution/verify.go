@@ -125,7 +125,25 @@ func Verify(root, archives string, allowDirty bool, platform string) error {
 			return fmt.Errorf("missing required distribution file %s", required)
 		}
 	}
+	downloads, err := ReadNativeDownloads(root)
+	if err != nil {
+		return err
+	}
+	if downloads != nil {
+		if len(downloads.Platforms) != len(platforms) {
+			return fmt.Errorf("native download platform set differs")
+		}
+		if _, ok := manifest["native-download.cjs"]; !ok {
+			return fmt.Errorf("missing native download bootstrap")
+		}
+	}
 	for _, target := range platforms {
+		if downloads != nil {
+			if _, ok := downloads.Platforms[target]; !ok {
+				return fmt.Errorf("missing native download platform")
+			}
+			continue
+		}
 		name := Binary(target)
 		if _, exists := manifest[name]; !exists {
 			return fmt.Errorf("missing binary %s", name)
@@ -139,6 +157,9 @@ func Verify(root, archives string, allowDirty bool, platform string) error {
 	}
 	for name := range manifest {
 		if strings.HasPrefix(name, "bin/") {
+			if downloads != nil {
+				return fmt.Errorf("download distribution must not contain bundled binaries")
+			}
 			found := false
 			for _, target := range platforms {
 				found = found || name == Binary(target)
@@ -160,7 +181,16 @@ func Verify(root, archives string, allowDirty bool, platform string) error {
 	}
 	for _, target := range platforms {
 		name := Asset(target)
-		if assets[name] == "" || assets[name] != manifest[Binary(target)] {
+		expected := manifest[Binary(target)]
+		if downloads != nil {
+			asset := downloads.Platforms[target]
+			expected = asset.SHA256
+			st, err := os.Stat(filepath.Join(archives, name))
+			if err != nil || st.Size() != asset.Size {
+				return fmt.Errorf("native asset size differs: %s", name)
+			}
+		}
+		if assets[name] == "" || assets[name] != expected {
 			return fmt.Errorf("standalone asset differs from bundled binary: %s", name)
 		}
 	}

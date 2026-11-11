@@ -1,10 +1,10 @@
 # Permissions and cache trust
 
-Use this guide when choosing cache policy or running the action on a persistent runner. The [usage reference](USAGE.md) describes inputs; [architecture](ARCHITECTURE.md) describes transfer and filesystem behavior. Pin a bundled distribution commit containing the executable for your platform.
+Use this guide when choosing cache policy or running the action on a persistent runner. The [usage reference](USAGE.md) describes inputs; [architecture](ARCHITECTURE.md) describes transfer and filesystem behavior. Pin a published distribution commit containing bundled executables or the reviewed native-download manifest.
 
 ## Permissions and credentials
 
-The installer downloads official Go releases over HTTPS. The root Node action receives GitHub's runtime cache credentials and passes them to Go; it does not use `GITHUB_TOKEN` to install Go or restore/save caches. Normal use needs no PAT, token input, `actions: write`, or `id-token: write` permission.
+The installer downloads official Go releases over HTTPS. The root Node action receives GitHub's runtime cache credentials and passes them to Go; it does not use `GITHUB_TOKEN` to install Go or restore/save caches. Normal use needs no PAT, token input, `actions: write`, or `id-token: write` permission. Lightweight distributions additionally download the matching executable from public GitHub release assets without any Authorization header. Its exact size and SHA-256 come from `NATIVE_DOWNLOADS.json` in the pinned action commit, never a remotely fetched checksum. The bootstrap restricts HTTPS redirects to GitHub asset hosts, verifies before private atomic publication, and rehashes reused files. A mutable release locator can lose availability without weakening the pinned digest check. Private release downloads are unsupported; use bundled distributions for that case.
 
 | Operation | Required access |
 | --- | --- |

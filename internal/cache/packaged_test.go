@@ -16,6 +16,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"setup-go-better/internal/distribution"
 )
 
 // TestPackagedLifecycle is opt-in: it consumes a prebuilt distribution and an
@@ -74,6 +76,42 @@ func TestPackagedLifecycle(t *testing.T) {
 		node = "node"
 	}
 	workspace := filepath.Join(repo, "testdata", "smoke")
+	nativeManifest, err := distribution.ReadNativeDownloads(dist)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nativeShim, nativeCount := "", ""
+	if nativeManifest != nil {
+		assets := os.Getenv("SETUP_GO_BETTER_TEST_NATIVE_ASSETS")
+		if assets == "" {
+			t.Fatal("download distributions require SETUP_GO_BETTER_TEST_NATIVE_ASSETS for the local fixture")
+		}
+		assets, err = filepath.Abs(assets)
+		if err != nil {
+			t.Fatal(err)
+		}
+		platform := runtime.GOOS + "/" + runtime.GOARCH
+		asset := filepath.Join(assets, distribution.Asset(platform))
+		shimDir := t.TempDir()
+		nativeShim, nativeCount = filepath.Join(shimDir, "native-fixture.cjs"), filepath.Join(shimDir, "downloads")
+		// Inject the transport only in the Node subprocess. The production bootstrap
+		// still validates its pinned URL/size/digest and runs the packaged executable.
+		// Isolate its reuse directory without copying the already installed compiler.
+		quoted := func(v string) string {
+			b, e := json.Marshal(v)
+			if e != nil {
+				t.Fatal(e)
+			}
+			return string(b)
+		}
+		shim := fmt.Sprintf(`const fs=require('node:fs');const {Readable}=require('node:stream');
+const bootstrap=require(%s);const original=bootstrap.ensureNative;
+bootstrap.ensureNative=(root,platform,options)=>original(root,platform,{...options,env:{...process.env,RUNNER_TEMP:%s}});
+globalThis.fetch=async(url,options)=>{if(url!==%s || Object.keys(options.headers).some(k=>k.toLowerCase()==='authorization'))throw Error('unexpected native request');fs.appendFileSync(%s,'download\\n');return new Response(Readable.toWeb(fs.createReadStream(%s)),{headers:{'content-length':String(fs.statSync(%s).size)}})};
+`, quoted(filepath.Join(dist, "native-download.cjs")), quoted(filepath.Join(shimDir, "native temp")), quoted(nativeManifest.BaseURL+"/"+distribution.Asset(platform)), quoted(nativeCount), quoted(asset), quoted(asset))
+		put(t, nativeShim, shim)
+	}
+
 	type remoteEntry struct {
 		key, version, id string
 		data             []byte
@@ -185,6 +223,9 @@ func TestPackagedLifecycle(t *testing.T) {
 			"GOCACHE":                          build, "GOMODCACHE": modules, "GOPATH": filepath.Join(root, "gopath"), "GOROOT": toolchain, "GOTOOLCHAIN": "local", "GOTELEMETRY": "off", "ACTIONS_RESULTS_URL": server.URL, "ACTIONS_RUNTIME_TOKEN": "local-test-main", "ACTIONS_CACHE_MODE": "", "STATE_cache_state": "", "STATE_cache_strict": "",
 			"HTTP_PROXY": "http://127.0.0.1:1", "HTTPS_PROXY": "http://127.0.0.1:1", "NO_PROXY": "127.0.0.1,localhost",
 		}
+		if nativeShim != "" {
+			env["NODE_OPTIONS"] = "--require=\"" + filepath.ToSlash(nativeShim) + "\""
+		}
 		for k, v := range fields {
 			env[k] = v
 		}
@@ -282,13 +323,19 @@ func TestPackagedLifecycle(t *testing.T) {
 		if _, err := os.Stat(env["INPUT_CACHE-REPORT"] + ".post.json"); err != nil {
 			t.Fatal(err)
 		}
-		if bash := os.Getenv("SETUP_GO_BETTER_TEST_BASH"); iteration == 1 && bash != "" {
+		if bash := os.Getenv("SETUP_GO_BETTER_TEST_BASH"); iteration == 1 && bash != "" && nativeManifest == nil {
 			env["SETUP_GO_BETTER_ROOT"] = dist
 			env["SETUP_GO_BETTER_VERSION"] = version
 			env["SETUP_GO_BETTER_LATEST"] = "false"
 			env["RUNNER_OS"] = map[string]string{"windows": "Windows", "linux": "Linux", "darwin": "macOS"}[runtime.GOOS]
 			env["RUNNER_ARCH"] = map[string]string{"amd64": "X64", "arm64": "ARM64"}[runtime.GOARCH]
 			execute(bash, "--noprofile", "--norc", filepath.Join(dist, "launch.sh"), "--cache=off")
+		}
+	}
+	if nativeManifest != nil {
+		data, err := os.ReadFile(nativeCount)
+		if err != nil || string(data) != "download\\n" {
+			t.Fatalf("main/post/alias should download exactly one native asset: %q %v", data, err)
 		}
 	}
 	mu.Lock()

@@ -13,7 +13,7 @@ Priorities are complete workflow cost, resource efficiency, and maintainability,
 
 | Candidate | Decision evidence |
 | --- | --- |
-| Matching-platform downloads or bundles | Acquisition latency, bytes, integrity, and release complexity versus the six-platform bundle |
+| Lightweight distribution adoption | Measure acquisition latency, bytes, integrity, and release complexity of the implemented matching-platform download mode versus the six-platform bundle |
 | Transfer/merge pipelining and extraction changes | Complete restore time, disk contention, memory, cancellation, and platform consistency |
 | Chunked storage and worker defaults | Complete workload time, requests, encoded bytes, temporary disk, and eviction behavior |
 | External storage or `GOCACHEPROG` | Authentication, per-object latency, operational cost, and end-to-end results |
