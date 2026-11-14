@@ -5,6 +5,8 @@ permissions:
   contents: read
 jobs:
   workload:
+    if: >-
+      github.repository != 'nicoheidtke/setup-go-faster' || (github.actor == 'nicoheidtke' && github.triggering_actor == 'nicoheidtke')
     strategy:
       fail-fast: false
       matrix:

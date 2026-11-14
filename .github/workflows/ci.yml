@@ -8,6 +8,8 @@ concurrency:
   cancel-in-progress: true
 jobs:
   unit:
+    if: >-
+      github.repository != 'nicoheidtke/setup-go-faster' || (github.actor == 'nicoheidtke' && github.triggering_actor == 'nicoheidtke')
     strategy:
       fail-fast: false
       matrix:
@@ -30,6 +32,8 @@ jobs:
           NODE24: ${{ steps.node-runtime.outputs.path }}
         run: go run ./cmd/check --node "$NODE24"
   workflows:
+    if: >-
+      github.repository != 'nicoheidtke/setup-go-faster' || (github.actor == 'nicoheidtke' && github.triggering_actor == 'nicoheidtke')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -39,7 +43,15 @@ jobs:
           go-version: '1.27.1'
           cache: false
       - run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck= -pyflakes=
+      - name: Verify workflow dependency lockfile
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh extension install github/gh-actions-lock --pin v0.4.1
+          gh actions-lock --verify --ignore-local-actions
   integration:
+    if: >-
+      github.repository != 'nicoheidtke/setup-go-faster' || (github.actor == 'nicoheidtke' && github.triggering_actor == 'nicoheidtke')
     strategy:
       fail-fast: false
       matrix:

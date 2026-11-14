@@ -77,6 +77,8 @@ permissions:
   contents: read
 jobs:
   cache-validation:
+    if: >-
+      github.repository != 'nicoheidtke/setup-go-faster' || (github.actor == 'nicoheidtke' && github.triggering_actor == 'nicoheidtke')
     name: cache-validation/${{ inputs.runner }}/${{ inputs.layout }}/${{ inputs.compression }}
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 30
@@ -169,7 +171,9 @@ jobs:
             cache-reports/restore.json
             cache-reports/probe.json
   report:
-    if: always()
+    if: >-
+      (always()) &&
+      (github.repository != 'nicoheidtke/setup-go-faster' || (github.actor == 'nicoheidtke' && github.triggering_actor == 'nicoheidtke'))
     needs: cache-validation
     runs-on: ubuntu-24.04
     timeout-minutes: 10
