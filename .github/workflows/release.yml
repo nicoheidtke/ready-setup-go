@@ -83,13 +83,12 @@ jobs:
           go run ./cmd/package --require-clean --platform linux/amd64 --out .cache/package/light-dist --archives .cache/package/light-assets --native-download-base https://github.com/nicoheidtke/setup-go-faster/releases/download/local-validation
           go run ./cmd/verify-distribution --platform linux/amd64 --dist .cache/package/light-dist --archives .cache/package/light-assets
       - name: Install isolated fixture toolchain through prepared bundle
-        uses: ./.cache/package/dist
+        shell: bash
         env:
-          RUNNER_TOOL_CACHE: ''
-          RUNNER_TEMP: ${{ runner.temp }}/package fixture with spaces
-        with:
-          go-version: '1.27.1'
-          cache: off
+          FIXTURE_TEMP: ${{ runner.temp }}/package fixture with spaces
+        run: |
+          RUNNER_TEMP="$FIXTURE_TEMP" RUNNER_TOOL_CACHE='' GITHUB_ENV='' GITHUB_PATH='' GITHUB_OUTPUT='' GITHUB_STEP_SUMMARY='' \
+            .cache/package/dist/bin/linux-amd64/setup-go-faster setup --go-version=1.27.1 --cache=off --summary=false
       - name: Gate preparation on bundled codec and storage lifecycles
         shell: bash
         env:

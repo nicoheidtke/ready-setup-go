@@ -25,6 +25,10 @@ See proposal.md. The current publisher already validates two builds, exact Git b
 - Six-platform validation costs runner minutes → run it once automatically within the release workflow; preserve manual control.
 - Hosted native fixtures do not establish every cache-service policy or speedup → retain explicit support limits and roadmap investigations.
 
+## Hosted fixture corrections
+
+The first hosted validation exposed pre-existing fixture assumptions: GitHub ignores workflow overrides of reserved RUNNER_* variables, and a read-only archive test prevented Unix temporary-directory cleanup. Provision fixture toolchains in explicit child processes with runner-output channels disabled so the packaging compiler stays active. Native fixture paths use the actual runner directory; the Linux release fixture additionally exercises a path containing spaces. Restore test-only read-only directory permissions during cleanup after all metadata assertions. Runtime behavior remains unchanged.
+
 ## Migration Plan
 
 Merge the readiness PR into main, run Release action for v1.0.0, and inspect the release summary. Thereafter merge ordinary source/documentation PRs and dispatch the next version. Never merge dist back into main or rebuild an existing published version to retry.
