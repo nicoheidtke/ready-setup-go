@@ -1,13 +1,21 @@
 version: 2
+# Routine updates are grouped weekly after a 14-day release cooldown.
+# Security updates bypass this cooldown; all PRs are merged manually.
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: Europe/Berlin
+    cooldown:
+      default-days: 14
     groups:
-      official-actions:
+      weekly-actions:
+        applies-to: version-updates
         patterns:
-          - actions/*
+          - '*'
     ignore:
       # Consumer tests must point at a bundled distribution, not source main.
       - dependency-name: nicoheidtke/setup-go-faster
@@ -15,7 +23,27 @@ updates:
     directory: /testdata/packages
     schedule:
       interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: Europe/Berlin
+    cooldown:
+      default-days: 14
+    groups:
+      weekly-fixture-dependencies:
+        applies-to: version-updates
+        patterns:
+          - '*'
   - package-ecosystem: gomod
     directory: /
     schedule:
       interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: Europe/Berlin
+    cooldown:
+      default-days: 14
+    groups:
+      weekly-runtime-dependencies:
+        applies-to: version-updates
+        patterns:
+          - '*'
