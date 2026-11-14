@@ -73,45 +73,24 @@ runs:
 `
 const usageFixture = "## Inputs\n| Input | Default | Behavior |\n| --- | --- | --- |\n| `version` | Empty | Version. |\n| `enabled` | `false` | Optional. |\n| `size` | `4` | Size. |\n\n## Outputs and environment\n| Output | Value |\n| --- | --- |\n| `path` | Path. |\n"
 
-const distributionPin = "1111111111111111111111111111111111111111"
-const distributionRelease = "v0.0.0-preview.20261111.3"
-const distributionIntro = "Examples pin bundled preview `" + distributionPin + "` (`" + distributionRelease + "`)"
-const distributionRecord = "| Release | [" + distributionRelease + "](https://github.com/nicoheidtke/setup-go-faster/releases/tag/" + distributionRelease + ") |\n| Distribution commit | `" + distributionPin + "` |\n| Source revision | `2222222222222222222222222222222222222222` |\n"
+const distributionIntro = "Examples use the `v1` major version tag."
+const distributionRecord = "Release provenance is recorded in GitHub Releases."
 
 func TestDistributionExamples(t *testing.T) {
-	valid := map[string]string{
-		"docs/DEVELOPMENT.md": distributionRecord,
-		"docs/USAGE.md":       distributionIntro,
-		"README.md":           "```yaml\n- uses: nicoheidtke/setup-go-faster@" + distributionPin + "\n```\n",
+	for _, ref := range []string{"v1", "v1.2.3", strings.Repeat("a", 40)} {
+		docs := map[string]string{"docs/USAGE.md": distributionIntro, "README.md": "- uses: nicoheidtke/setup-go-faster@" + ref}
+		if got := checkDistributionExamples(docs); len(got) != 0 {
+			t.Fatal(got)
+		}
 	}
-	if got := checkDistributionExamples(valid); len(got) != 0 {
-		t.Fatal(got)
+	for _, ref := range []string{"main", "dist", "v2", "v1.02.3", "DISTRIBUTION_COMMIT_SHA", "v0.0.0-preview.20261115"} {
+		docs := map[string]string{"docs/USAGE.md": distributionIntro, "README.md": "- uses: nicoheidtke/setup-go-faster@" + ref}
+		if got := checkDistributionExamples(docs); len(got) == 0 {
+			t.Fatal("invalid reference accepted", ref)
+		}
 	}
-	for _, tc := range []struct{ name, file, text, want string }{
-		{"old-example", "README.md", "- uses: nicoheidtke/setup-go-faster@3333333333333333333333333333333333333333", "README.md:1: action example must pin"},
-		{"mutable-example", "docs/SECURITY_MODEL.md", "- uses: 'nicoheidtke/setup-go-faster@main' # example", "action example must pin"},
-		{"missing-record", "docs/DEVELOPMENT.md", "", "require recommended"},
-		{"source-not-sha", "docs/DEVELOPMENT.md", strings.ReplaceAll(distributionRecord, "2222222222222222222222222222222222222222", "main"), "require recommended"},
-		{"tag-link-drift", "docs/DEVELOPMENT.md", strings.Replace(distributionRecord, "/tag/"+distributionRelease, "/tag/v0.0.0-preview.old", 1), "require recommended"},
-		{"duplicate-record", "docs/DEVELOPMENT.md", distributionRecord + distributionRecord, "duplicate recommended"},
-		{"usage-tag-drift", "docs/USAGE.md", strings.Replace(distributionIntro, distributionRelease, "v0.0.0-preview.old", 1), "example distribution SHA/tag"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			docs := map[string]string{}
-			for file, contents := range valid {
-				docs[file] = contents
-			}
-			docs[tc.file] = tc.text
-			if got := strings.Join(checkDistributionExamples(docs), "\n"); !strings.Contains(got, tc.want) {
-				t.Fatalf("got %s, want %s", got, tc.want)
-			}
-		})
-	}
-	// Source reference tables may grow before publication. Pin consistency must
-	// not incorrectly assert that source inputs exist in the published binary.
-	valid["docs/USAGE.md"] += "\n| `future-source-input` | Empty | Requires a new distribution. |\n"
-	if got := checkDistributionExamples(valid); len(got) != 0 {
-		t.Fatal(got)
+	if got := checkDistributionExamples(map[string]string{}); len(got) == 0 {
+		t.Fatal("missing major version accepted")
 	}
 }
 
@@ -150,26 +129,5 @@ func TestRepositoryChecksImportAndIntegration(t *testing.T) {
 	put(t, root, "CLAUDE.md", "@agents.md\n")
 	if got := strings.Join(checkRepository(root), "\n"); !strings.Contains(got, "only @AGENTS.md") {
 		t.Fatal(got)
-	}
-}
-
-func TestUnpublishedDistributionExamples(t *testing.T) {
-	docs := map[string]string{
-		"docs/DEVELOPMENT.md": "| Release | Not published |\n| Distribution commit | Not published |\n| Source revision | Not published |\n",
-		"docs/USAGE.md":       "No distribution is published yet.",
-		"README.md":           "- uses: nicoheidtke/setup-go-faster@DISTRIBUTION_COMMIT_SHA",
-	}
-	if got := checkDistributionExamples(docs); len(got) != 0 {
-		t.Fatal(got)
-	}
-	for _, pin := range []string{"main", distributionPin} {
-		docs["README.md"] = "- uses: nicoheidtke/setup-go-faster@" + pin
-		if got := checkDistributionExamples(docs); len(got) == 0 {
-			t.Fatalf("unpublished record accepted pin %s", pin)
-		}
-	}
-	docs["docs/DEVELOPMENT.md"] = strings.Replace(docs["docs/DEVELOPMENT.md"], "| Release | Not published |", "| Release | missing |", 1)
-	if got := checkDistributionExamples(docs); len(got) == 0 {
-		t.Fatal("accepted inconsistent publication metadata")
 	}
 }

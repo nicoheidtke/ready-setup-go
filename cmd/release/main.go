@@ -30,12 +30,13 @@ func run() error {
 	fs.StringVar(&c.Repository, "repository", "nicoheidtke/setup-go-faster", "GitHub owner/name")
 	fs.StringVar(&c.Remote, "remote", "origin", "named Git remote")
 	fs.StringVar(&c.SourceRef, "source-ref", "refs/heads/main", "source branch ref")
-	fs.StringVar(&c.PreviewRef, "preview-ref", "refs/heads/codex/action-preview", "preview branch ref")
-	fs.StringVar(&c.Tag, "tag", "", "unused dated prerelease tag")
+	fs.StringVar(&c.DistributionRef, "distribution-ref", "refs/heads/dist", "distribution branch ref")
+	fs.StringVar(&c.Tag, "tag", "", "unused exact vMAJOR.MINOR.PATCH tag")
 	fs.StringVar(&c.Dist, "dist", ".cache/release/dist", "verified all-six distribution")
 	fs.StringVar(&c.Assets, "assets", ".cache/release/artifacts", "verified nine assets")
 	fs.StringVar(&c.ReproDist, "repro-dist", ".cache/release/dist-repro", "second build distribution")
 	fs.StringVar(&c.ReproAssets, "repro-assets", ".cache/release/artifacts-repro", "second build assets")
+	fs.BoolVar(&c.Promote, "promote", true, "mark latest and update major/minor aliases after verification; false for maintenance releases")
 	notes := fs.String("notes", "", "release notes Markdown file (plan only)")
 	if err := fs.Parse(os.Args[2:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -104,7 +105,7 @@ func run() error {
 		if err = r.Publish(ctx, p, absPlan); err != nil {
 			return err
 		}
-		fmt.Printf("Verified prerelease: %s\nAction SHA: %s\n", p.URL, p.Distribution)
+		fmt.Printf("Verified release: %s\nAction SHA: %s\n", p.URL, p.Distribution)
 	default:
 		return fmt.Errorf("unknown release phase; use plan, prepare or publish")
 	}

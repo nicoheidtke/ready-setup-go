@@ -4,7 +4,7 @@ Return to the [project overview](../README.md), see the [comparison with setup-g
 
 ## Usage
 
-No distribution is published yet. Replace `DISTRIBUTION_COMMIT_SHA` in examples with a verified distribution commit after publication; see [development](DEVELOPMENT.md#latest-published-distribution). The input reference describes this source checkout. Source-only revisions cannot run directly as an action.
+Examples use the `v1` major version tag. It follows compatible releases. For a fixed revision, use the full distribution SHA from the [release notes](https://github.com/nicoheidtke/setup-go-faster/releases); source commits do not contain the packaged action.
 
 ```yaml
 permissions:
@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: nicoheidtke/setup-go-faster@DISTRIBUTION_COMMIT_SHA
+      - uses: nicoheidtke/setup-go-faster@v1
         with:
           go-version: '1.26.x'
           cache: restore-save
@@ -27,7 +27,7 @@ Exact versions, such as `1.26.8`, reuse an installed match without a network req
 Alternatively, read the checked-out project's version file:
 
 ```yaml
-- uses: nicoheidtke/setup-go-faster@DISTRIBUTION_COMMIT_SHA
+- uses: nicoheidtke/setup-go-faster@v1
   with:
     go-version-file: go.mod
     cache: restore-save
@@ -85,7 +85,7 @@ Snapshots include operating system, architecture, exact selected Go version, rep
 Restore first looks for recent dependency-matching snapshots, then compatible snapshots in the same namespace so dependency changes can reuse existing objects. GitHub enforces branch visibility and default-branch fallback. Build/test/lint jobs have separate job identities; matrix variants within one job must include their differing dimensions in `cache-scope`:
 
 ```yaml
-- uses: nicoheidtke/setup-go-faster@DISTRIBUTION_COMMIT_SHA
+- uses: nicoheidtke/setup-go-faster@v1
   with:
     go-version: '${{ matrix.go }}'
     cache: restore-save

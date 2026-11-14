@@ -14,7 +14,7 @@ It targets **Go 1.26+** on Linux, macOS and Windows, on both amd64 and arm64. **
 
 ## Quick start
 
-There's no published distribution yet. Once one is available, replace `DISTRIBUTION_COMMIT_SHA` below with its verified bundled distribution commit. A source commit won't work as an action; it needs the packaged executables.
+Use `v1` for compatible updates. For a fixed revision, pin the full action distribution SHA recorded in the [release notes](https://github.com/nicoheidtke/setup-go-faster/releases).
 
 ```yaml
 permissions:
@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: nicoheidtke/setup-go-faster@DISTRIBUTION_COMMIT_SHA
+      - uses: nicoheidtke/setup-go-faster@v1
         with:
           go-version-file: go.mod
           cache: restore-save

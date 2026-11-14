@@ -1,4 +1,4 @@
-// Package release prepares and publishes this action's bundled prereleases.
+// Package release prepares and publishes this action's bundled releases.
 // It never dispatches workflows or changes repository settings.
 package release
 
@@ -21,25 +21,27 @@ import (
 
 var shaPattern = regexp.MustCompile(`^[a-f0-9]{40}$`)
 var repoPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$`)
-var tagPattern = regexp.MustCompile(`^v0\.0\.0-preview\.[0-9]{8}(\.[1-9][0-9]*)?$`)
+var tagPattern = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
 
 type Config struct {
-	Root, Repository, Remote, SourceRef, PreviewRef, Tag string
-	Dist, Assets, ReproDist, ReproAssets, Notes          string
+	Root, Repository, Remote, SourceRef, DistributionRef, Tag string
+	Dist, Assets, ReproDist, ReproAssets, Notes               string
+	Promote                                                   bool
 }
 
 // Plan contains no credential. Keep it under an ignored directory and review it
 // before prepare/publish. Its expected remote refs are compare-and-swap guards.
 type Plan struct {
-	Config          Config            `json:"config"`
-	Source          string            `json:"source"`
-	ExpectedSource  string            `json:"expected_source"`
-	ExpectedPreview string            `json:"expected_preview"`
-	Files           map[string]string `json:"files_sha256"`
-	Assets          map[string]string `json:"assets_sha256"`
-	Distribution    string            `json:"distribution,omitempty"`
-	TagObject       string            `json:"tag_object,omitempty"`
-	URL             string            `json:"published_url,omitempty"`
+	Config               Config            `json:"config"`
+	Source               string            `json:"source"`
+	ExpectedSource       string            `json:"expected_source"`
+	ExpectedDistribution string            `json:"expected_distribution"`
+	ExpectedAliases      map[string]string `json:"expected_aliases,omitempty"`
+	Files                map[string]string `json:"files_sha256"`
+	Assets               map[string]string `json:"assets_sha256"`
+	Distribution         string            `json:"distribution,omitempty"`
+	TagObject            string            `json:"tag_object,omitempty"`
+	URL                  string            `json:"published_url,omitempty"`
 }
 
 // Runner's only injectable boundaries are private test seams. The CLI exposes
@@ -70,18 +72,18 @@ func (r *Runner) git(ctx context.Context, input []byte, env []string, args ...st
 
 func configValid(c Config) error {
 	if !repoPattern.MatchString(c.Repository) || !tagPattern.MatchString(c.Tag) {
-		return fmt.Errorf("repository must be owner/name and tag a dated v0.0.0-preview.YYYYMMDD[.N]")
+		return fmt.Errorf("repository must be owner/name and tag an exact vMAJOR.MINOR.PATCH without leading zeroes")
 	}
 	if c.Remote == "" || strings.HasPrefix(c.Remote, "-") || strings.ContainsAny(c.Remote, " /\\\r\n\x00") {
 		return fmt.Errorf("invalid named Git remote")
 	}
-	for _, ref := range []string{c.SourceRef, c.PreviewRef} {
+	for _, ref := range []string{c.SourceRef, c.DistributionRef} {
 		if !strings.HasPrefix(ref, "refs/heads/") || strings.ContainsAny(ref, " ~^:?*[\\\r\n\x00") || strings.Contains(ref, "..") || strings.HasSuffix(ref, "/") {
 			return fmt.Errorf("invalid branch ref")
 		}
 	}
-	if c.SourceRef == c.PreviewRef {
-		return fmt.Errorf("source and preview refs must differ")
+	if c.SourceRef == c.DistributionRef {
+		return fmt.Errorf("source and distribution refs must differ")
 	}
 	if len(c.Notes) == 0 || len(c.Notes) > 64<<10 {
 		return fmt.Errorf("release notes must contain 1–65536 bytes")
@@ -156,7 +158,11 @@ func (r *Runner) refs(ctx context.Context, c Config) (map[string]string, error) 
 	if len(pushLines) != 1 || !approvedGitURL(strings.TrimSpace(pushLines[0]), c.Repository) {
 		return nil, fmt.Errorf("exactly one push URL must identify the selected GitHub repository")
 	}
-	b, err := r.git(ctx, nil, nil, "ls-remote", "--refs", c.Remote, c.SourceRef, c.PreviewRef, "refs/tags/"+c.Tag)
+	args := []string{"ls-remote", "--refs", c.Remote, c.SourceRef, c.DistributionRef, "refs/tags/" + c.Tag}
+	if c.Promote {
+		args = append(args, "refs/tags/v*")
+	}
+	b, err := r.git(ctx, nil, nil, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -243,14 +249,16 @@ func (r *Runner) CreatePlan(ctx context.Context, c Config) (*Plan, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !shaPattern.MatchString(refs[c.SourceRef]) || !shaPattern.MatchString(refs[c.PreviewRef]) || refs["refs/tags/"+c.Tag] != "" {
-		return nil, fmt.Errorf("source/preview branch must exist and release tag must be unused")
+	if !shaPattern.MatchString(refs[c.SourceRef]) || (refs[c.DistributionRef] != "" && !shaPattern.MatchString(refs[c.DistributionRef])) || refs["refs/tags/"+c.Tag] != "" {
+		return nil, fmt.Errorf("source branch must exist, distribution ref must be valid or absent, and release tag must be unused")
 	}
-	if _, err = r.git(ctx, nil, nil, "merge-base", "--is-ancestor", refs[c.SourceRef], current.Revision); err != nil {
-		return nil, fmt.Errorf("remote source must be an ancestor of the release source")
+	if refs[c.SourceRef] != current.Revision {
+		return nil, fmt.Errorf("release source must equal the remote source branch; merge source PRs before planning")
 	}
-	if _, err = r.git(ctx, nil, nil, "cat-file", "-e", refs[c.PreviewRef]+"^{commit}"); err != nil {
-		return nil, fmt.Errorf("fetch the named remote's preview branch objects before planning")
+	if refs[c.DistributionRef] != "" {
+		if _, err = r.git(ctx, nil, nil, "cat-file", "-e", refs[c.DistributionRef]+"^{commit}"); err != nil {
+			return nil, fmt.Errorf("fetch the named remote's distribution branch objects before planning")
+		}
 	}
 	branch, err := r.git(ctx, nil, nil, "rev-parse", c.SourceRef)
 	if err != nil || strings.TrimSpace(string(branch)) != current.Revision {
@@ -259,15 +267,41 @@ func (r *Runner) CreatePlan(ctx context.Context, c Config) (*Plan, error) {
 	if local, _ := r.git(ctx, nil, nil, "show-ref", "--verify", "--hash", "refs/tags/"+c.Tag); len(local) > 0 {
 		return nil, fmt.Errorf("local release tag already exists")
 	}
-	return &Plan{Config: c, Source: current.Revision, ExpectedSource: refs[c.SourceRef], ExpectedPreview: refs[c.PreviewRef], Files: a, Assets: assets}, nil
+	aliases := map[string]string{}
+	if c.Promote {
+		for ref := range refs {
+			tag := strings.TrimPrefix(ref, "refs/tags/")
+			if tagPattern.MatchString(tag) && versionLess(c.Tag, tag) {
+				return nil, fmt.Errorf("a newer version exists; use --promote=false for a maintenance release")
+			}
+		}
+		for _, alias := range releaseAliases(c.Tag) {
+			aliases[alias] = refs[alias]
+		}
+	}
+	return &Plan{Config: c, Source: current.Revision, ExpectedSource: refs[c.SourceRef], ExpectedDistribution: refs[c.DistributionRef], ExpectedAliases: aliases, Files: a, Assets: assets}, nil
 }
 
 func (r *Runner) Validate(ctx context.Context, p *Plan) error {
 	if err := configValid(p.Config); err != nil {
 		return err
 	}
-	if !shaPattern.MatchString(p.Source) || !shaPattern.MatchString(p.ExpectedSource) || !shaPattern.MatchString(p.ExpectedPreview) {
+	if !shaPattern.MatchString(p.Source) || p.ExpectedSource != p.Source || (p.ExpectedDistribution != "" && !shaPattern.MatchString(p.ExpectedDistribution)) {
 		return fmt.Errorf("invalid plan revisions")
+	}
+	expectedNames := map[string]bool{}
+	if p.Config.Promote {
+		for _, ref := range releaseAliases(p.Config.Tag) {
+			expectedNames[ref] = true
+		}
+	}
+	if len(expectedNames) != len(p.ExpectedAliases) {
+		return fmt.Errorf("release alias plan differs")
+	}
+	for ref, expected := range p.ExpectedAliases {
+		if !expectedNames[ref] || (expected != "" && !shaPattern.MatchString(expected)) {
+			return fmt.Errorf("invalid release alias plan")
+		}
 	}
 	root, err := filepath.Abs(r.Root)
 	if err != nil || root != p.Config.Root {
@@ -363,4 +397,23 @@ func sortedKeys(m map[string]string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// releaseAliases are mutable convenience tags; full versions remain fixed.
+func releaseAliases(tag string) []string {
+	parts := strings.Split(tag, ".")
+	return []string{"refs/tags/" + parts[0], "refs/tags/" + parts[0] + "." + parts[1]}
+}
+
+func versionLess(a, b string) bool {
+	x, y := strings.Split(a[1:], "."), strings.Split(b[1:], ".")
+	for i := range x {
+		if len(x[i]) != len(y[i]) {
+			return len(x[i]) < len(y[i])
+		}
+		if x[i] != y[i] {
+			return x[i] < y[i]
+		}
+	}
+	return false
 }

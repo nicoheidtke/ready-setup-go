@@ -29,7 +29,7 @@ jobs:
     cache-mode: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: nicoheidtke/setup-go-faster@DISTRIBUTION_COMMIT_SHA
+      - uses: nicoheidtke/setup-go-faster@v1
         with:
           go-version-file: go.mod
           cache: restore

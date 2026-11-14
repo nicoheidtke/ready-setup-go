@@ -1,25 +1,63 @@
-name: Prepare action distribution
+name: Release action
 on:
   workflow_dispatch:
     inputs:
-      attest:
-        description: Generate hosted provenance after successful preparation (requires repository/plan support)
+      tag:
+        description: Exact version (v1.0.0); empty prepares artifacts only
+        type: string
+        default: ''
+      notes:
+        description: Optional reviewed notes; empty generates notes from merged pull requests
+        type: string
+        default: ''
+      publish:
+        description: Publish the verified release from main after all preparation gates
         type: boolean
         default: false
+      promote:
+        description: Mark latest and update major/minor aliases (disable for maintenance releases)
+        type: boolean
+        default: true
+      attest:
+        description: Generate GitHub-hosted build provenance for release assets
+        type: boolean
+        default: true
 permissions:
   contents: read
+concurrency:
+  group: action-distribution-release
+  cancel-in-progress: false
 jobs:
+  validate:
+    uses: ./.github/workflows/ci.yml
   package:
+    needs: validate
     if: >-
       github.repository != 'nicoheidtke/setup-go-faster' || (github.actor == 'nicoheidtke' && github.triggering_actor == 'nicoheidtke')
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     timeout-minutes: 30
     env:
       GOTOOLCHAIN: local
       GOTELEMETRY: 'off'
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate release request
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_NOTES: ${{ inputs.notes }}
+          PUBLISH: ${{ inputs.publish }}
+        run: |
+          if [[ -n "$RELEASE_TAG" || "$PUBLISH" == true ]]; then
+            test "$GITHUB_REF" = refs/heads/main
+            test -n "$RELEASE_TAG"
+          fi
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version: '1.27.1'
           cache: false
@@ -78,7 +116,52 @@ jobs:
         run: |
           SETUP_GO_FASTER_TEST_COMPRESSION=zstd SETUP_GO_FASTER_TEST_STORAGE=archive go test ./internal/cache -run '^TestPackagedLifecycle$' -count=1 -v
           SETUP_GO_FASTER_TEST_COMPRESSION=gzip SETUP_GO_FASTER_TEST_STORAGE=chunked go test ./internal/cache -run '^TestPackagedLifecycle$' -count=1 -v
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - name: Prepare release plan and exact Git objects
+        if: inputs.tag != ''
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_NOTES: ${{ inputs.notes }}
+          PROMOTE: ${{ inputs.promote }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if [[ -z "$RELEASE_NOTES" ]]; then
+            RELEASE_NOTES=$(gh api --method POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$RELEASE_TAG" -f target_commitish="$GITHUB_SHA" --jq .body)
+          fi
+          printf '%s\n\nValidation: https://github.com/%s/actions/runs/%s\n' "$RELEASE_NOTES" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" > .cache/package/notes.md
+          go run ./cmd/release plan --promote="$PROMOTE" --tag "$RELEASE_TAG" --notes .cache/package/notes.md --dist .cache/package/dist --assets .cache/package/artifacts --repro-dist .cache/package/dist-repro --repro-assets .cache/package/artifacts-repro --plan .cache/package/plan.json
+          go run ./cmd/release prepare --plan .cache/package/plan.json
+          go run ./cmd/release publish --plan .cache/package/plan.json
+          git bundle create .cache/package/recovery.bundle refs/heads/main "refs/tags/$RELEASE_TAG"
+      - name: Retain release recovery inputs before publication
+        if: inputs.tag != ''
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: release-recovery
+          path: |
+            .cache/package/plan.json
+            .cache/package/notes.md
+            .cache/package/recovery.bundle
+            .cache/package/dist/**
+            .cache/package/artifacts/**
+          include-hidden-files: true
+          retention-days: 14
+      - name: Publish verified release
+        if: inputs.publish
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh auth setup-git
+          go run ./cmd/release publish --execute --plan .cache/package/plan.json
+          {
+            printf '### Published release\n\n'
+            printf '[Release](%s)\n\n' "$(jq -r .published_url .cache/package/plan.json)"
+            printf 'Action pin: `nicoheidtke/setup-go-faster@%s`\n' "$(jq -r .distribution .cache/package/plan.json)"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: action-distribution
           path: |
@@ -98,8 +181,8 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/download-artifact@v8.0.2
         with:
           name: action-distribution
           path: .cache/attest
@@ -108,11 +191,11 @@ jobs:
         run: sha256sum -c SHA256SUMS
       - name: Attest prepared artifacts from this run
         id: provenance
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        uses: actions/attest@v4.2.2
         with:
           subject-path: .cache/attest/*
           create-storage-record: false
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: action-attestation
           path: ${{ steps.provenance.outputs.bundle-path }}

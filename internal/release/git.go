@@ -51,8 +51,13 @@ func (r *Runner) verifyCommit(ctx context.Context, p *Plan) error {
 	if err != nil {
 		return err
 	}
-	if strings.Join(strings.Fields(string(parents)), " ") != p.Distribution+" "+p.ExpectedPreview {
-		return fmt.Errorf("distribution parent differs from planned preview")
+	expectedParents := []string{p.Distribution}
+	if p.ExpectedDistribution != "" && p.ExpectedDistribution != p.Source {
+		expectedParents = append(expectedParents, p.ExpectedDistribution)
+	}
+	expectedParents = append(expectedParents, p.Source)
+	if strings.Join(strings.Fields(string(parents)), " ") != strings.Join(expectedParents, " ") {
+		return fmt.Errorf("distribution parent differs from planned distribution")
 	}
 	return nil
 }
@@ -104,7 +109,12 @@ func (r *Runner) Prepare(ctx context.Context, p *Plan, path string) error {
 		if err != nil {
 			return err
 		}
-		commit, err := r.git(ctx, []byte("Bundle action prerelease from "+p.Source+"\n"), nil, "commit-tree", strings.TrimSpace(string(tree)), "-p", p.ExpectedPreview)
+		args := []string{"commit-tree", strings.TrimSpace(string(tree))}
+		if p.ExpectedDistribution != "" && p.ExpectedDistribution != p.Source {
+			args = append(args, "-p", p.ExpectedDistribution)
+		}
+		args = append(args, "-p", p.Source)
+		commit, err := r.git(ctx, []byte("Bundle action release "+p.Config.Tag+" from "+p.Source+"\n"), nil, args...)
 		if err != nil {
 			return err
 		}
@@ -122,7 +132,7 @@ func (r *Runner) Prepare(ctx context.Context, p *Plan, path string) error {
 		if p.TagObject != "" {
 			return fmt.Errorf("prepared tag disappeared; inspect local refs before resuming")
 		}
-		if _, err := r.git(ctx, nil, nil, "tag", "-a", p.Config.Tag, p.Distribution, "-m", "Bundled prerelease from "+p.Source); err != nil {
+		if _, err := r.git(ctx, nil, nil, "tag", "-a", p.Config.Tag, p.Distribution, "-m", "Bundled release "+p.Config.Tag+" from "+p.Source); err != nil {
 			return err
 		}
 		current, _ = r.git(ctx, nil, nil, "show-ref", "--verify", "--hash", ref)
@@ -170,10 +180,15 @@ func (r *Runner) CheckPush(ctx context.Context, p *Plan) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if refs[p.Config.SourceRef] == p.Source && refs[p.Config.PreviewRef] == p.Distribution && refs["refs/tags/"+p.Config.Tag] == p.TagObject {
+	for ref, expected := range p.ExpectedAliases {
+		if refs[ref] != expected && refs[ref] != p.Distribution {
+			return false, fmt.Errorf("release alias changed; inspect before resuming")
+		}
+	}
+	if refs[p.Config.SourceRef] == p.Source && refs[p.Config.DistributionRef] == p.Distribution && refs["refs/tags/"+p.Config.Tag] == p.TagObject {
 		return true, nil
 	}
-	if refs[p.Config.SourceRef] != p.ExpectedSource || refs[p.Config.PreviewRef] != p.ExpectedPreview || refs["refs/tags/"+p.Config.Tag] != "" {
+	if refs[p.Config.SourceRef] != p.ExpectedSource || refs[p.Config.DistributionRef] != p.ExpectedDistribution || refs["refs/tags/"+p.Config.Tag] != "" {
 		return false, fmt.Errorf("remote refs changed; do not force or re-plan over a published release")
 	}
 	return false, nil
@@ -184,8 +199,48 @@ func (r *Runner) pushPlan(ctx context.Context, p *Plan) error {
 		return r.push(ctx, p)
 	}
 	// Explicit leases close the read/push race. Atomic push prevents a partial
-	// source/preview/tag update; leases never authorize a non-fast-forward source.
-	args := []string{"push", "--atomic", "--force-with-lease=" + p.Config.SourceRef + ":" + p.ExpectedSource, "--force-with-lease=" + p.Config.PreviewRef + ":" + p.ExpectedPreview, "--force-with-lease=refs/tags/" + p.Config.Tag + ":", p.Config.Remote, p.Source + ":" + p.Config.SourceRef, p.Distribution + ":" + p.Config.PreviewRef, "refs/tags/" + p.Config.Tag + ":refs/tags/" + p.Config.Tag}
+	// source/distribution/tag update; leases never authorize a non-fast-forward source.
+	args := []string{"push", "--atomic", "--force-with-lease=" + p.Config.SourceRef + ":" + p.ExpectedSource, "--force-with-lease=" + p.Config.DistributionRef + ":" + p.ExpectedDistribution, "--force-with-lease=refs/tags/" + p.Config.Tag + ":", p.Config.Remote, p.Source + ":" + p.Config.SourceRef, p.Distribution + ":" + p.Config.DistributionRef, "refs/tags/" + p.Config.Tag + ":refs/tags/" + p.Config.Tag}
 	_, err := r.git(ctx, nil, nil, args...)
 	return err
+}
+
+// Aliases move only after the release and every remote asset have been verified.
+func (r *Runner) promoteAliases(ctx context.Context, p *Plan) error {
+	if !p.Config.Promote {
+		return nil
+	}
+	refs, err := r.refs(ctx, p.Config)
+	if err != nil {
+		return err
+	}
+	args := []string{"push", "--atomic"}
+	var updates []string
+	for _, ref := range releaseAliases(p.Config.Tag) {
+		if refs[ref] == p.Distribution {
+			continue
+		}
+		if refs[ref] != p.ExpectedAliases[ref] {
+			return fmt.Errorf("alias changed: %s", ref)
+		}
+		args = append(args, "--force-with-lease="+ref+":"+p.ExpectedAliases[ref])
+		updates = append(updates, p.Distribution+":"+ref)
+	}
+	if len(updates) != 0 {
+		args = append(args, p.Config.Remote)
+		args = append(args, updates...)
+		if _, err = r.git(ctx, nil, nil, args...); err != nil {
+			return err
+		}
+	}
+	refs, err = r.refs(ctx, p.Config)
+	if err != nil {
+		return err
+	}
+	for _, ref := range releaseAliases(p.Config.Tag) {
+		if refs[ref] != p.Distribution {
+			return fmt.Errorf("alias update not verified: %s", ref)
+		}
+	}
+	return nil
 }

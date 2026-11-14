@@ -2,7 +2,7 @@
 
 Start with the setup logs and the action's separate **Post …** step after regular job steps finish. With summaries enabled, the job summary has separate toolchain, restore, and save results. A restore hit or a printed save key does not prove that post saved a snapshot; check its final `SAVED`, `SKIP`, or `ERROR` result.
 
-This guide describes current source behavior. The [recommended published distribution](DEVELOPMENT.md#latest-published-distribution) has its own immutable source revision; newer diagnostic categories and safety limits require a newly packaged distribution. See [usage](USAGE.md) for input defaults and supported entrypoints.
+This guide describes current source behavior. The [release provenance](DEVELOPMENT.md#release-provenance) has its own immutable source revision; newer diagnostic categories and safety limits require a newly packaged distribution. See [usage](USAGE.md) for input defaults and supported entrypoints.
 
 ## Find the symptom
 

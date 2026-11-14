@@ -128,9 +128,9 @@ func fixture(t *testing.T) (*Runner, *Plan, string, map[string]string) {
 	copyFiles(t, dist, reproDist)
 	copyFiles(t, assets, reproAssets)
 	r := New(root)
-	refs := map[string]string{"refs/heads/main": provenance.Revision, "refs/heads/codex/action-preview": provenance.Revision}
+	refs := map[string]string{"refs/heads/main": provenance.Revision, "refs/heads/dist": provenance.Revision}
 	r.remote = func(context.Context, Config) (map[string]string, error) { return refs, nil }
-	c := Config{Repository: "fixture/action", Remote: "origin", SourceRef: "refs/heads/main", PreviewRef: "refs/heads/codex/action-preview", Tag: "v0.0.0-preview.20261111", Dist: dist, Assets: assets, ReproDist: reproDist, ReproAssets: reproAssets, Notes: "Fixture prerelease"}
+	c := Config{Repository: "fixture/action", Remote: "origin", SourceRef: "refs/heads/main", DistributionRef: "refs/heads/dist", Tag: "v1.0.0", Dist: dist, Assets: assets, ReproDist: reproDist, ReproAssets: reproAssets, Notes: "Fixture release"}
 	p, err := r.CreatePlan(context.Background(), c)
 	if err != nil {
 		t.Fatal(err)
@@ -162,12 +162,12 @@ func TestPlanPrepareRawBytesAndResume(t *testing.T) {
 		t.Fatalf("initial state: %t %v", done, err)
 	}
 	refs[p.Config.SourceRef] = p.Source
-	refs[p.Config.PreviewRef] = p.Distribution
+	refs[p.Config.DistributionRef] = p.Distribution
 	refs["refs/tags/"+p.Config.Tag] = p.TagObject
 	if done, err := r.CheckPush(ctx, p); err != nil || !done {
 		t.Fatalf("pushed state: %t %v", done, err)
 	}
-	refs[p.Config.PreviewRef] = strings.Repeat("f", 40)
+	refs[p.Config.DistributionRef] = strings.Repeat("f", 40)
 	if _, err := r.CheckPush(ctx, p); err == nil {
 		t.Fatal("changed remote refs accepted")
 	}
@@ -186,11 +186,11 @@ func TestPlanPrepareRawBytesAndResume(t *testing.T) {
 func TestPlanRejectsChangedReproAndUnsafeConfig(t *testing.T) {
 	r, p, _, _ := fixture(t)
 	ctx := context.Background()
-	for _, tag := range []string{"v1", "--delete", "v0.0.0-preview.20261111\n"} {
+	for _, tag := range []string{"v1", "--delete", "v1.0.0\n"} {
 		c := p.Config
 		c.Tag = tag
 		if _, err := r.CreatePlan(ctx, c); err == nil {
-			t.Fatal("unsafe or stable tag accepted")
+			t.Fatal("unsafe tag accepted")
 		}
 	}
 	write(t, p.Config.ReproDist, "README.md", []byte("different"))
@@ -208,15 +208,15 @@ func TestAtomicPushLeasesUseOnlyTemporaryBareRemote(t *testing.T) {
 	bare := filepath.Join(t.TempDir(), "remote.git")
 	testGit(t, r.Root, "init", "--bare", "--quiet", bare)
 	testGit(t, r.Root, "remote", "add", "origin", bare)
-	testGit(t, r.Root, "push", "--quiet", "origin", p.Source+":"+p.Config.SourceRef, p.ExpectedPreview+":"+p.Config.PreviewRef)
+	testGit(t, r.Root, "push", "--quiet", "origin", p.Source+":"+p.Config.SourceRef, p.ExpectedDistribution+":"+p.Config.DistributionRef)
 	tree := testGit(t, r.Root, "rev-parse", p.Source+"^{tree}")
 	other := testGit(t, r.Root, "commit-tree", tree, "-p", p.Source, "-m", "competing source")
 	testGit(t, r.Root, "push", "--quiet", "origin", other+":"+p.Config.SourceRef)
 	if err := r.pushPlan(ctx, p); err == nil {
 		t.Fatal("stale source lease accepted")
 	}
-	if got := testGit(t, r.Root, "--git-dir="+bare, "rev-parse", p.Config.PreviewRef); got != p.ExpectedPreview {
-		t.Fatal("failed atomic push partially updated preview")
+	if got := testGit(t, r.Root, "--git-dir="+bare, "rev-parse", p.Config.DistributionRef); got != p.ExpectedDistribution {
+		t.Fatal("failed atomic push partially updated distribution")
 	}
 	cmd := exec.Command("git", "--git-dir="+bare, "show-ref", "--verify", "refs/tags/"+p.Config.Tag)
 	if err := cmd.Run(); err == nil {
@@ -226,14 +226,14 @@ func TestAtomicPushLeasesUseOnlyTemporaryBareRemote(t *testing.T) {
 	if err := r.pushPlan(ctx, p); err != nil {
 		t.Fatal(err)
 	}
-	for ref, want := range map[string]string{p.Config.SourceRef: p.Source, p.Config.PreviewRef: p.Distribution, "refs/tags/" + p.Config.Tag: p.TagObject} {
+	for ref, want := range map[string]string{p.Config.SourceRef: p.Source, p.Config.DistributionRef: p.Distribution, "refs/tags/" + p.Config.Tag: p.TagObject} {
 		if got := testGit(t, r.Root, "--git-dir="+bare, "rev-parse", ref); got != want {
 			t.Fatalf("atomic pushed ref %s: %s", ref, got)
 		}
 	}
 }
 
-type apiOptions struct{ badDigest, lostCreate, lostUpload, finalNotFound, assetsNotFound bool }
+type apiOptions struct{ badDigest, lostCreate, lostUpload, finalNotFound, assetsNotFound, wrongClassification bool }
 
 func apiFixture(t *testing.T, options apiOptions) (*github, *Plan, *int, *bool) {
 	t.Helper()
@@ -244,7 +244,7 @@ func apiFixture(t *testing.T, options apiOptions) (*github, *Plan, *int, *bool) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := &Plan{Config: Config{Repository: "fixture/action", Tag: "v0.0.0-preview.20261111", Assets: root, Notes: "Reviewed notes"}, Source: strings.Repeat("a", 40), Distribution: strings.Repeat("b", 40), Assets: m}
+	p := &Plan{Config: Config{Repository: "fixture/action", Tag: "v1.0.0", Assets: root, Notes: "Reviewed notes"}, Source: strings.Repeat("a", 40), Distribution: strings.Repeat("b", 40), Assets: m}
 	var release *remoteRelease
 	uploadCount := 0
 	published := false
@@ -272,7 +272,10 @@ func apiFixture(t *testing.T, options apiOptions) (*github, *Plan, *int, *bool) 
 			if release != nil {
 				t.Error("duplicate create")
 			}
-			release = &remoteRelease{ID: 1, Tag: p.Config.Tag, Target: p.Distribution, Draft: true, Prerelease: true, Body: releaseBody(p), UploadURL: server.URL + "/upload{?name}", URL: server.URL + "/published"}
+			release = &remoteRelease{ID: 1, Tag: p.Config.Tag, Target: p.Distribution, Draft: true, Prerelease: false, Body: releaseBody(p), UploadURL: server.URL + "/upload{?name}", URL: server.URL + "/published"}
+			if options.wrongClassification {
+				release.Prerelease = !release.Prerelease
+			}
 			if options.lostCreate {
 				options.lostCreate = false
 				w.WriteHeader(503)
@@ -306,7 +309,26 @@ func apiFixture(t *testing.T, options apiOptions) (*github, *Plan, *int, *bool) 
 			if len(release.Assets) != len(p.Assets) {
 				t.Error("published before all uploads")
 			}
+			var request struct {
+				Draft      bool   `json:"draft"`
+				Prerelease bool   `json:"prerelease"`
+				Latest     string `json:"make_latest"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Error(err)
+				w.WriteHeader(500)
+				return
+			}
+			wantPreview := false
+			wantLatest := "false"
+			if p.Config.Promote {
+				wantLatest = "true"
+			}
+			if request.Draft || request.Prerelease != wantPreview || request.Latest != wantLatest {
+				t.Errorf("incorrect publication options: %+v", request)
+			}
 			release.Draft = false
+			release.Prerelease = request.Prerelease
 			published = true
 			json.NewEncoder(w).Encode(release)
 		default:
@@ -492,12 +514,192 @@ func TestLightweightReleasePlanAndPrepare(t *testing.T) {
 		t.Fatal(err)
 	}
 	wrong := p.Config
-	wrong.Tag = "v0.0.0-preview.20261112"
+	wrong.Tag = "v1.0.1"
 	if _, err := r.CreatePlan(context.Background(), wrong); err == nil || !strings.Contains(err.Error(), "locator") {
 		t.Fatalf("wrong release tag accepted: %v", err)
 	}
 	planned.Config.Repository = "other/action"
 	if err := r.Validate(context.Background(), planned); err == nil || !strings.Contains(err.Error(), "locator") {
 		t.Fatalf("mismatched release accepted: %v", err)
+	}
+}
+
+func TestReleaseVersions(t *testing.T) {
+	r, p, _, _ := fixture(t)
+	for _, tag := range []string{"v1.0.0", "v0.1.0", "v12.34.567", "v2.0.0"} {
+		c := p.Config
+		c.Tag = tag
+		if _, err := r.CreatePlan(context.Background(), c); err != nil {
+			t.Errorf("%s: %v", tag, err)
+		}
+	}
+	for _, tag := range []string{"v1", "v1.2", "1.2.3", "v01.2.3", "v1.02.3", "v1.2.03", "v0.0.0-preview.20261115", "v1.2.3-rc.1", "v1.2.3+build", "v1.2.3\n"} {
+		c := p.Config
+		c.Tag = tag
+		if _, err := r.CreatePlan(context.Background(), c); err == nil {
+			t.Errorf("accepted %q", tag)
+		}
+	}
+}
+
+func TestFirstReleaseAtomicPushAndResume(t *testing.T) {
+	r, initial, path, refs := fixture(t)
+	delete(refs, initial.Config.DistributionRef)
+	c := initial.Config
+	c.Tag = "v1.0.0"
+	ctx := context.Background()
+	p, err := r.CreatePlan(ctx, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.ExpectedDistribution != "" {
+		t.Fatal("first release has a parent")
+	}
+	if err = r.Prepare(ctx, p, path); err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, r.Root, "merge-base", "--is-ancestor", p.Source, p.Distribution)
+	if done, err := r.CheckPush(ctx, p); err != nil || done {
+		t.Fatalf("first preflight: %t %v", done, err)
+	}
+	bare := filepath.Join(t.TempDir(), "remote.git")
+	testGit(t, r.Root, "init", "--bare", "--quiet", bare)
+	testGit(t, r.Root, "remote", "add", "origin", bare)
+	testGit(t, r.Root, "push", "--quiet", "origin", p.Source+":"+p.Config.SourceRef)
+	// A competing initial branch must invalidate the absent-ref lease atomically.
+	testGit(t, r.Root, "--git-dir="+bare, "update-ref", p.Config.DistributionRef, p.Source)
+	if err = r.pushPlan(ctx, p); err == nil {
+		t.Fatal("competing first branch accepted")
+	}
+	if got := testGit(t, r.Root, "--git-dir="+bare, "rev-parse", p.Config.DistributionRef); got != p.Source {
+		t.Fatal("competing branch changed")
+	}
+	cmd := exec.Command("git", "--git-dir="+bare, "show-ref", "--verify", "refs/tags/"+p.Config.Tag)
+	if err := cmd.Run(); err == nil {
+		t.Fatal("failed push created tag")
+	}
+	testGit(t, r.Root, "--git-dir="+bare, "update-ref", "-d", p.Config.DistributionRef, p.Source)
+	if err = r.pushPlan(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	refs[p.Config.DistributionRef] = p.Distribution
+	refs["refs/tags/"+p.Config.Tag] = p.TagObject
+	if done, err := r.CheckPush(ctx, p); err != nil || !done {
+		t.Fatalf("resume: %t %v", done, err)
+	}
+	if err = r.Prepare(ctx, p, path); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestStablePublicationAndClassificationConflict(t *testing.T) {
+	g, p, count, published := apiFixture(t, apiOptions{})
+	p.Config.Tag = "v1.0.0"
+	p.Config.Promote = true
+	if _, err := g.publish(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+	if !*published || *count != 2 {
+		t.Fatal("stable release not published")
+	}
+	if _, err := g.publish(context.Background(), p); err != nil || *count != 2 {
+		t.Fatalf("stable resume: %v", err)
+	}
+	g, p, _, published = apiFixture(t, apiOptions{wrongClassification: true})
+	p.Config.Tag = "v1.0.0"
+	if _, err := g.publish(context.Background(), p); err == nil || *published {
+		t.Fatal("classification conflict accepted")
+	}
+}
+
+func TestAliasPlanAndPromotion(t *testing.T) {
+	r, initial, path, refs := fixture(t)
+	c := initial.Config
+	c.Tag = "v1.2.3"
+	c.Promote = true
+	ctx := context.Background()
+	refs["refs/tags/v1.1.0"] = initial.Source
+	p, err := r.CreatePlan(ctx, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = r.Prepare(ctx, p, path); err != nil {
+		t.Fatal(err)
+	}
+	bare := filepath.Join(t.TempDir(), "remote.git")
+	testGit(t, r.Root, "init", "--bare", "--quiet", bare)
+	testGit(t, r.Root, "remote", "add", "origin", bare)
+	testGit(t, r.Root, "push", "--quiet", "origin", p.Distribution+":"+c.DistributionRef)
+	// Simulate the remote reader while exercising actual guarded Git pushes.
+	raceNext := false
+	r.remote = func(context.Context, Config) (map[string]string, error) {
+		result := map[string]string{}
+		output := testGit(t, r.Root, "ls-remote", "--refs", "origin")
+		for _, line := range strings.Split(output, "\n") {
+			fields := strings.Fields(line)
+			result[fields[1]] = fields[0]
+		}
+		if raceNext {
+			raceNext = false
+			testGit(t, r.Root, "--git-dir="+bare, "update-ref", "refs/tags/v1", p.Source)
+		}
+		return result, nil
+	}
+	// A race must not create either alias partially.
+	testGit(t, r.Root, "push", "--quiet", "origin", p.Source+":refs/tags/v1")
+	if err = r.promoteAliases(ctx, p); err == nil {
+		t.Fatal("alias conflict accepted")
+	}
+	if got := testGit(t, r.Root, "--git-dir="+bare, "tag", "-l", "v1.2"); got != "" {
+		t.Fatal("partial alias created")
+	}
+	testGit(t, r.Root, "--git-dir="+bare, "update-ref", "-d", "refs/tags/v1", p.Source)
+	raceNext = true
+	if err = r.promoteAliases(ctx, p); err == nil {
+		t.Fatal("stale alias push lease accepted")
+	}
+	if got := testGit(t, r.Root, "--git-dir="+bare, "tag", "-l", "v1.2"); got != "" {
+		t.Fatal("failed atomic push partially created alias")
+	}
+	testGit(t, r.Root, "--git-dir="+bare, "update-ref", "-d", "refs/tags/v1", p.Source)
+	if err = r.promoteAliases(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	if err = r.promoteAliases(ctx, p); err != nil {
+		t.Fatal("alias resume:", err)
+	}
+	for _, alias := range releaseAliases(c.Tag) {
+		if got := testGit(t, r.Root, "--git-dir="+bare, "rev-parse", alias); got != p.Distribution {
+			t.Fatal("wrong alias target", got)
+		}
+	}
+}
+
+func TestPromotionRejectsDowngradeAndAllowsMaintenance(t *testing.T) {
+	r, p, _, refs := fixture(t)
+	refs["refs/tags/v2.10.0"] = p.Source
+	c := p.Config
+	c.Tag = "v2.9.99"
+	c.Promote = true
+	if _, err := r.CreatePlan(context.Background(), c); err == nil {
+		t.Fatal("downgrade accepted")
+	}
+	c.Promote = false
+	maintenance, err := r.CreatePlan(context.Background(), c)
+	if err != nil || len(maintenance.ExpectedAliases) != 0 {
+		t.Fatalf("maintenance: %v", err)
+	}
+	for _, pair := range [][2]string{{"v1.9.9", "v1.10.0"}, {"v2.0.0", "v10.0.0"}, {"v1.0.9", "v1.0.10"}} {
+		if !versionLess(pair[0], pair[1]) || versionLess(pair[1], pair[0]) {
+			t.Fatal("version ordering", pair)
+		}
+	}
+}
+
+func TestPlanRequiresMergedSource(t *testing.T) {
+	r, p, _, refs := fixture(t)
+	refs[p.Config.SourceRef] = strings.Repeat("f", 40)
+	if _, err := r.CreatePlan(context.Background(), p.Config); err == nil || !strings.Contains(err.Error(), "merge source PRs") {
+		t.Fatalf("unmerged source accepted: %v", err)
 	}
 }

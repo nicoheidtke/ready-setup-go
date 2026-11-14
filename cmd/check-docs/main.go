@@ -354,47 +354,25 @@ func checkReference(action, usage string) []string {
 	return problems
 }
 
-// The published record owns the recommended pin, independently of source inputs.
-// This only checks documentation consistency, not remote publication or whether
-// a published executable implements features added later in the source checkout.
+// The usage guide owns the recommended major alias. Release notes carry exact
+// source/distribution provenance, avoiding a documentation commit per release.
 func checkDistributionExamples(documents map[string]string) []string {
-	development := documents["docs/DEVELOPMENT.md"]
-	record := regexp.MustCompile("(?m)^\\| (Release|Distribution commit|Source revision) \\| (.+) \\|\\r?$")
-	values := map[string]string{}
-	for _, match := range record.FindAllStringSubmatch(development, -1) {
-		if values[match[1]] != "" {
-			return []string{"docs/DEVELOPMENT.md: duplicate recommended distribution " + match[1]}
-		}
-		values[match[1]] = match[2]
+	major := regexp.MustCompile("Examples use the `([^`]+)` major version tag\\.").FindStringSubmatch(documents["docs/USAGE.md"])
+	if major == nil || !regexp.MustCompile(`^v[1-9][0-9]*$`).MatchString(major[1]) {
+		return []string{"docs/USAGE.md: require recommended major version tag"}
 	}
-	unpublished := values["Release"] == "Not published" && values["Distribution commit"] == "Not published" && values["Source revision"] == "Not published"
-	sha := regexp.MustCompile("^`([0-9a-f]{40})`$")
-	pin := sha.FindStringSubmatch(values["Distribution commit"])
-	source := sha.FindStringSubmatch(values["Source revision"])
-	release := regexp.MustCompile(`^\[(v[0-9A-Za-z._-]+)\]\(https://github\.com/nicoheidtke/setup-go-faster/releases/tag/([0-9A-Za-z._-]+)\)$`).FindStringSubmatch(values["Release"])
-	if !unpublished && (pin == nil || source == nil || release == nil || release[1] != release[2]) {
-		return []string{"docs/DEVELOPMENT.md: require recommended Release link, Distribution commit, and Source revision metadata"}
-	}
-	expected := "DISTRIBUTION_COMMIT_SHA"
-	intro := "No distribution is published yet."
-	if !unpublished {
-		expected = pin[1]
-		intro = fmt.Sprintf("Examples pin bundled preview `%s` (`%s`)", pin[1], release[1])
-	}
-	var problems []string
 	uses := regexp.MustCompile(`nicoheidtke/setup-go-faster@([^\s'"` + "`" + `]+)`)
+	sha := regexp.MustCompile(`^[0-9a-f]{40}$`)
+	exact := regexp.MustCompile(`^` + major[1] + `\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
+	var problems []string
 	for file, contents := range documents {
 		for i, line := range strings.Split(contents, "\n") {
 			for _, match := range uses.FindAllStringSubmatch(line, -1) {
-				if match[1] != expected {
-					problems = append(problems, fmt.Sprintf("%s:%d: action example must pin recommended distribution %s", file, i+1, expected))
+				if match[1] != major[1] && !sha.MatchString(match[1]) && !exact.MatchString(match[1]) {
+					problems = append(problems, fmt.Sprintf("%s:%d: action example must use %s, an exact release in that major, or a full distribution SHA", file, i+1, major[1]))
 				}
 			}
 		}
-	}
-	usage := documents["docs/USAGE.md"]
-	if !strings.Contains(usage, intro) {
-		problems = append(problems, "docs/USAGE.md: example distribution SHA/tag must match recommended distribution metadata")
 	}
 	slices.Sort(problems)
 	return problems

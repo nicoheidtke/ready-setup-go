@@ -2,7 +2,7 @@
 
 Priorities are complete workflow cost, resource efficiency, and maintainability, in that order. Local microbenchmarks alone do not establish a workflow speedup.
 
-## Before a stable release
+## Release validation and remaining evidence
 
 - Complete native cache lifecycle checks on Linux, macOS, and Windows, on amd64 and arm64, using the action's Node 24 runtime.
 - Validate hosted chunked storage, branch/default-branch access, restricted tokens, failed/cancelled jobs, concurrent writers, and presentation. See [validation](docs/DEVELOPMENT.md#validation).
