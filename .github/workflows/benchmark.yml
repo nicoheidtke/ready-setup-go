@@ -47,8 +47,8 @@ jobs:
       GOTELEMETRY: 'off'
       REQUESTED_VERSION: ${{ inputs.go-version }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version: '1.27.1'
           cache: false
@@ -67,7 +67,7 @@ jobs:
           NODE_PATH: ${{ steps.runtime.outputs.path }}
           SCENARIO: ${{ matrix.scenario }}
         run: go run ./cmd/benchmark --version "$REQUESTED_VERSION" --scenario "$SCENARIO" --node "$NODE_PATH" --samples 20 --out launcher.json
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: launcher-${{ matrix.scenario }}
           path: launcher.json
@@ -89,18 +89,18 @@ jobs:
       GOTELEMETRY: 'off'
       REQUESTED_VERSION: ${{ inputs.go-version }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           repository: actions/setup-go
           ref: ${{ needs.revisions.outputs.official }}
           path: _baselines/official
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           repository: WillAbides/setup-go-faster
           ref: ${{ needs.revisions.outputs.faster }}
           path: _baselines/faster
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version: '1.27.1'
           cache: false
@@ -128,7 +128,7 @@ jobs:
           echo "faster-cache=$RUNNER_TEMP/faster/tools" >> "$GITHUB_OUTPUT"
       - name: Seed official tool cache
         if: matrix.scenario != 'cold'
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@v7.0.0
         env:
           RUNNER_TOOL_CACHE: ${{ steps.scenario.outputs.official-cache }}
           RUNNER_TEMP: ${{ runner.temp }}/official
@@ -137,7 +137,7 @@ jobs:
           cache: false
       - name: Seed faster tool cache
         if: matrix.scenario != 'cold'
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@v7.0.0
         env:
           RUNNER_TOOL_CACHE: ${{ steps.scenario.outputs.faster-cache }}
           RUNNER_TEMP: ${{ runner.temp }}/faster
@@ -146,7 +146,7 @@ jobs:
           cache: false
       - name: Seed faster tool cache
         if: matrix.scenario != 'cold'
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@v7.0.0
         env:
           RUNNER_TOOL_CACHE: ${{ steps.scenario.outputs.faster-cache }}
           RUNNER_TEMP: ${{ runner.temp }}/faster
@@ -220,7 +220,7 @@ jobs:
           for name in HTTP_PROXY HTTPS_PROXY http_proxy https_proxy NO_PROXY no_proxy; do echo "$name=" >> "$GITHUB_ENV"; done
           printf '%s\n' "revision=$GITHUB_SHA" "official=$OFFICIAL_REVISION" "faster=$FASTER_REVISION" "runner=$RUNNER_OS/$RUNNER_ARCH" "image=$ImageOS" "image-version=$ImageVersion" > metadata.txt
           go version >> metadata.txt
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - uses: actions/upload-artifact@v7.0.2
         if: always()
         with:
           name: metadata-${{ matrix.scenario }}-${{ matrix.sample }}
@@ -236,15 +236,15 @@ jobs:
       contents: read
       actions: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version: '1.27.1'
           cache: false
       - run: go run ./cmd/workflow-report --out workflow-timings.json
         env:
           GH_TOKEN: ${{ github.token }}
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: workflow-timings
           path: workflow-timings.json

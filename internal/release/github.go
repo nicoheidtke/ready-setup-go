@@ -130,6 +130,10 @@ func (g *github) findRelease(ctx context.Context, base, tag string) (*remoteRele
 
 func (g *github) publish(ctx context.Context, p *Plan) (string, error) {
 	base := g.base + "/repos/" + p.Config.Repository + "/releases"
+	latest := "false"
+	if p.Config.Promote {
+		latest = "true"
+	}
 	found, err := g.findRelease(ctx, base, p.Config.Tag)
 	if err != nil {
 		return "", err
@@ -140,12 +144,12 @@ func (g *github) publish(ctx context.Context, p *Plan) (string, error) {
 	}
 	body := releaseBody(p)
 	if found == nil {
-		_, err = g.json(ctx, http.MethodPost, base, map[string]any{"tag_name": p.Config.Tag, "target_commitish": p.Distribution, "name": p.Config.Tag, "body": body, "draft": true, "prerelease": true, "make_latest": "false"}, &release)
+		_, err = g.json(ctx, http.MethodPost, base, map[string]any{"tag_name": p.Config.Tag, "target_commitish": p.Distribution, "name": p.Config.Tag, "body": body, "draft": true, "prerelease": false, "make_latest": latest}, &release)
 		if err != nil {
 			return "", err
 		}
 	}
-	if release.ID <= 0 || release.Tag != p.Config.Tag || release.Target != p.Distribution || release.Body != body || !release.Prerelease {
+	if release.ID <= 0 || release.Tag != p.Config.Tag || release.Target != p.Distribution || release.Body != body || release.Prerelease {
 		return "", fmt.Errorf("existing release differs from this plan; refusing to replace it")
 	}
 	assetsURL := base + "/" + strconv.FormatInt(release.ID, 10) + "/assets?per_page=100"
@@ -193,7 +197,7 @@ func (g *github) publish(ctx context.Context, p *Plan) (string, error) {
 		}
 	}
 	if release.Draft {
-		if _, err = g.json(ctx, http.MethodPatch, base+"/"+strconv.FormatInt(release.ID, 10), map[string]any{"draft": false, "prerelease": true, "make_latest": "false"}, &release); err != nil {
+		if _, err = g.json(ctx, http.MethodPatch, base+"/"+strconv.FormatInt(release.ID, 10), map[string]any{"draft": false, "prerelease": false, "make_latest": latest}, &release); err != nil {
 			return "", err
 		}
 	}
@@ -206,7 +210,7 @@ func (g *github) publish(ctx context.Context, p *Plan) (string, error) {
 	if status != http.StatusOK {
 		return "", fmt.Errorf("published release could not be re-fetched")
 	}
-	if release.Draft || !release.Prerelease || release.Target != p.Distribution || release.Tag != p.Config.Tag || release.Body != body || len(release.Assets) != len(p.Assets) {
+	if release.Draft || release.Prerelease || release.Target != p.Distribution || release.Tag != p.Config.Tag || release.Body != body || len(release.Assets) != len(p.Assets) {
 		return "", fmt.Errorf("published release verification failed")
 	}
 	seen := map[string]bool{}
@@ -268,5 +272,11 @@ func (r *Runner) Publish(ctx context.Context, p *Plan, path string) error {
 	if err != nil {
 		return err
 	}
-	return Save(path, p)
+	if err = Save(path, p); err != nil {
+		return err
+	}
+	if err = r.promoteAliases(ctx, p); err != nil {
+		return fmt.Errorf("release published; alias promotion incomplete: %w; resume the same plan", err)
+	}
+	return nil
 }

@@ -2,7 +2,7 @@
 
 Reviewed 2026-11-10 against official [`actions/setup-go` v7.0.0](https://github.com/actions/setup-go/releases/tag/v7.0.0), commit `b7ad1dad31e06c5925ef5d2fc7ad053ef454303e`, and this repository's implementation. This compares behavior, not measured speed.
 
-Choose the official action for broad compatibility and established defaults. Consider this action when fresh, isolated job snapshots and explicit cache controls justify adopting a preview.
+Choose the official action for broad compatibility and established defaults. Consider this action when fresh, isolated job snapshots and explicit cache controls justify adopting another action.
 
 | Area | Official `actions/setup-go` | `setup-go-faster` |
 | --- | --- | --- |

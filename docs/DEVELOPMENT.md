@@ -107,7 +107,7 @@ Windows skips this fixture explicitly: Node child termination uses forceful Wind
 
 ### Hosted lifecycle
 
-Workflows are manual; maintainers control execution and costs. Native integration checks all six targets without multiplying matrix jobs: each runs bundled main/post fixtures for gzip/zstd/none with archive/chunked storage, one platform-appropriate cancellation fixture, and lightweight archive/zstd plus chunked/gzip bootstrap/reuse cases. The lightweight fixtures use local packaged assets, not public release downloads. Distribution preparation independently gates artifact upload on the same cases on Linux amd64 and complete contributor/workflow checks; it does not substitute for six-native validation. The consumer workflow takes a full distribution SHA and checks the published bundle.
+Workflows are manual; maintainers control execution and costs. Native integration checks all six targets without multiplying matrix jobs: each runs bundled main/post fixtures for gzip/zstd/none with archive/chunked storage, one platform-appropriate cancellation fixture, and lightweight archive/zstd plus chunked/gzip bootstrap/reuse cases. The lightweight fixtures use local packaged assets, not public release downloads. The release workflow invokes that complete validation suite, then independently gates artifact upload on the same cases on Linux amd64 and complete contributor/workflow checks; its Linux preparation fixtures remain separate from six-native validation. The consumer workflow takes a full distribution SHA and checks the published bundle.
 
 Use `cache-validation.yml` with a fresh scope for each independent probe. Fix source/toolchain, runner, dependencies, job identity, and settings within each pair. Inspect completed post logs before treating `probe.json` intended `fresh_keys` as saved entries. `expect-hit` requires a complete restore; `expect-miss` requires no match or payload; `expected-match` requires exact reviewed seed keys.
 
@@ -129,14 +129,10 @@ Retain revisions, runner image, Go version, inputs, event/ref, seed/matched keys
 
 The source targets Go 1.26+ on Linux/macOS/Windows, amd64/arm64. Caching defaults off; enabled caching defaults to archive/gzip. Self-hosted runners have no guarantee against hostile concurrent filesystem writers.
 
-Contributor checks, native packaged lifecycle fixtures, cross-compilation, hosted service behavior, and measured performance are separate evidence. Run the applicable checks above for each candidate. No controlled end-to-end speedup is established. The [roadmap](../ROADMAP.md) lists remaining release gates.
+Contributor checks, native packaged lifecycle fixtures, cross-compilation, hosted service behavior, and measured performance are separate evidence. Run the applicable checks above for each candidate. No controlled end-to-end speedup is established. The [roadmap](../ROADMAP.md) lists remaining validation and performance work.
 
-## Latest published distribution
+## Release provenance
 
-No distribution is published yet. Consumer examples use `DISTRIBUTION_COMMIT_SHA` as an explicit placeholder. Before recommending a distribution, complete the [release procedure](RELEASES.md), record its release link, distribution commit, source revision, asset digests, compiler, and validation evidence here, and update all example pins together.
+[GitHub Releases](https://github.com/nicoheidtke/setup-go-faster/releases) records each version's distribution SHA, exact source revision, checksums, compiler metadata, and validation workflow. `v1` and `v1.0` are convenience aliases; full version tags identify fixed distributions. Source commits cannot run as actions.
 
-| Provenance | Value |
-| --- | --- |
-| Release | Not published |
-| Distribution commit | Not published |
-| Source revision | Not published |
+Keep release evidence with its release rather than updating source documentation after every patch. The [release checklist](RELEASES.md#maintainer-checklist) explains the main-only source workflow and recovery.
