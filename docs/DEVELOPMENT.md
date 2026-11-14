@@ -34,6 +34,26 @@ Measurement commands are maintainer tools, separate from the action's public inp
 
 Release builds use Go 1.27.1. Also check the Go 1.26 line and use Node 24 to verify the action runtime. Run contribution checks after changes; native integration and hosted service checks cover additional boundaries.
 
+### Reviewing contributions
+
+External contributors open PRs from forks and provide local or fork-workflow check results; see the [fork contribution workflow](../CONTRIBUTING.md#fork-contribution-workflow). Before merging, review the complete diff, including workflow files, test helpers, dependency changes, and scripts executed by checks. Confirm that the reported results apply to the current PR head; a later push requires renewed review and validation.
+
+To validate a reviewed PR locally, use a disposable checkout without release credentials or unrelated private files. With GitHub CLI installed, replace `PR_NUMBER` with the PR number:
+
+```text
+git clone https://github.com/nicoheidtke/setup-go-faster.git setup-go-faster-review
+cd setup-go-faster-review
+gh pr checkout PR_NUMBER
+git rev-parse HEAD
+go run ./cmd/check --workflows
+```
+
+Record the printed commit SHA and the check results in your review. Add the relevant native integration checks below when runtime or lifecycle behavior changes. A local checkout is not a sandbox: contributor tests and build tools execute code, so use a separate disposable environment when the change needs isolation.
+
+The upstream **Installer validation** workflow checks the branch selected when it is manually dispatched. It does not select or test a fork PR automatically. There is no separate PR-testing workflow; use the local procedure above for validation before merging. After merging, dispatch the existing validation workflow on `main` when hosted coverage is needed. Do not make these manual branch checks required PR checks: their results are not automatically attached to the PR head.
+
+In `nicoheidtke/setup-go-faster`, each committed workflow job checks both the original actor and the person initiating a rerun against the maintainer account. Forks retain their existing manual workflows. These checks supplement GitHub's write-access restrictions; they skip unauthorized jobs rather than preventing creation of a workflow-run record. GitHub-managed Dependabot update jobs are separate and remain enabled. Repository access, installed apps, branch protection, and review of workflow edits remain the authorization boundary.
+
 ### Bounded fuzzing
 
 Ordinary tests execute the seed corpora for `FuzzPortablePath` and `FuzzVersionFile`. They check native path confinement/canonicalization, stable Unicode case folding, and supported version-selector extraction/round trips. Mutation fuzzing is opt-in; run one target at a time with a fixed duration and worker bound:

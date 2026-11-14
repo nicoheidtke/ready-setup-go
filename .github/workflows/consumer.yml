@@ -19,6 +19,8 @@ permissions:
   contents: read
 jobs:
   consume:
+    if: >-
+      github.repository != 'nicoheidtke/setup-go-faster' || (github.actor == 'nicoheidtke' && github.triggering_actor == 'nicoheidtke')
     name: consume/${{ inputs.runner }}
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 15

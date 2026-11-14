@@ -80,6 +80,8 @@ permissions:
   contents: read
 jobs:
   plan:
+    if: >-
+      github.repository != 'nicoheidtke/setup-go-faster' || (github.actor == 'nicoheidtke' && github.triggering_actor == 'nicoheidtke')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -110,6 +112,8 @@ jobs:
           esac
           echo "matrix={\"workload\":$matrix}" >> "$GITHUB_OUTPUT"
   benchmark:
+    if: >-
+      github.repository != 'nicoheidtke/setup-go-faster' || (github.actor == 'nicoheidtke' && github.triggering_actor == 'nicoheidtke')
     needs: plan
     name: cache-benchmark/${{ inputs.runner }}/${{ matrix.workload }}/${{ inputs.scenario }}/${{ inputs.layout }}/${{ inputs.compression }}
     runs-on: ${{ inputs.runner }}
@@ -184,7 +188,9 @@ jobs:
           name: cache-${{ matrix.workload }}-${{ inputs.scenario }}-${{ inputs.layout }}-${{ inputs.compression }}
           path: cache-reports/
   report:
-    if: always()
+    if: >-
+      (always()) &&
+      (github.repository != 'nicoheidtke/setup-go-faster' || (github.actor == 'nicoheidtke' && github.triggering_actor == 'nicoheidtke'))
     needs: benchmark
     runs-on: ubuntu-24.04
     timeout-minutes: 10

@@ -10,6 +10,8 @@ permissions:
   contents: read
 jobs:
   package:
+    if: >-
+      github.repository != 'nicoheidtke/setup-go-faster' || (github.actor == 'nicoheidtke' && github.triggering_actor == 'nicoheidtke')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -84,7 +86,9 @@ jobs:
           include-hidden-files: true
           retention-days: 14
   attest:
-    if: inputs.attest
+    if: >-
+      (inputs.attest) &&
+      (github.repository != 'nicoheidtke/setup-go-faster' || (github.actor == 'nicoheidtke' && github.triggering_actor == 'nicoheidtke'))
     needs: package
     runs-on: ubuntu-24.04
     timeout-minutes: 10

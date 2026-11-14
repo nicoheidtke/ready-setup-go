@@ -4,6 +4,21 @@ Use [Issues](https://github.com/nicoheidtke/setup-go-faster/issues) for bugs and
 
 Discuss substantial changes to public inputs, defaults, or cache compatibility before implementation. Small fixes and documentation improvements can go straight to a pull request. Human and automated contributions follow the same requirements; [AGENTS.md](AGENTS.md) describes engineering constraints.
 
+## Fork contribution workflow
+
+External contributions must come through a pull request from a fork. Fork [nicoheidtke/setup-go-faster](https://github.com/nicoheidtke/setup-go-faster), clone your fork, and create a topic branch:
+
+```text
+git clone https://github.com/YOUR-ACCOUNT/setup-go-faster.git
+cd setup-go-faster
+git remote add upstream https://github.com/nicoheidtke/setup-go-faster.git
+git switch -c describe-your-change
+```
+
+Make the change, run the applicable checks below, commit, and push the topic branch to your fork. Open a pull request targeting this repository's `main` branch. Include the tested commit and check results in the PR description. Keep generated distributions, credentials, and raw reports out of the PR.
+
+Opening or updating a PR does not run this repository's workflows. You can run checks locally or manually run the existing validation workflow in your own fork. The maintainer reviews changes and controls upstream workflow execution and merging. Dependabot is an exception to the fork requirement: it opens dependency-update branches and PRs in this repository, but does not merge them automatically.
+
 ## Get started
 
 Install Git, Go 1.26 or newer, and Node 24, then clone the repository and enter its root directory. Release builds use Go 1.27.1. Runtime code uses the Go standard library plus the pinned `github.com/klauspost/compress/zstd` codec, with dependency-free launcher files; no npm installation is needed. Dependency upgrades must preserve decoder resource limits and review chunk identity changes; refresh `THIRD_PARTY_NOTICES.txt` when upstream license notices change.
@@ -23,6 +38,16 @@ go run ./cmd/check --workflows
 ```
 
 This adds actionlint 1.7.12 through `go run`, which may download the pinned tool and its dependencies. Optional shellcheck and pyflakes integrations are disabled. Go can also download a compiler selected by its toolchain settings; use `GOTOOLCHAIN=local` when checks must use only an already installed compiler.
+
+When a change adds or updates a workflow action dependency, also regenerate and verify the committed workflow lockfile with GitHub CLI and the pinned extension:
+
+```text
+gh extension install github/gh-actions-lock --pin v0.4.1
+gh actions-lock --ignore-local-actions
+gh actions-lock --verify --ignore-local-actions
+```
+
+If the extension is already installed, check `gh actions-lock --version` before using it. Review the complete workflow and `actions.lock` diff. Preserve the `./` references used for generated distributions and checked-out benchmark actions; do not use `--migrate-local-actions`, which changes where that code comes from. The generator cannot inspect these workspace actions. If one starts using other actions, those dependencies also need lockfile entries for the workflow that executes it. Dependabot keeps lockfile entries in sync for onboarded workflows. The existing manual validation workflow verifies the lockfile too.
 
 For concurrency changes, add `--race` to run uncached, ten-minute-bounded race tests for the cache, archive, backend, logging, and retry packages. This requires a supported Go race-detector platform, cgo enabled, and a compatible C compiler. Missing prerequisites fail visibly; ordinary checks do not imply race coverage. Parser fuzz seeds run with ordinary Go tests; see [bounded fuzzing](docs/DEVELOPMENT.md#bounded-fuzzing) for optional mutation runs.
 
