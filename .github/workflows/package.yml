@@ -1,0 +1,116 @@
+name: Prepare action distribution
+on:
+  workflow_dispatch:
+    inputs:
+      attest:
+        description: Generate hosted provenance after successful preparation (requires repository/plan support)
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GOTOOLCHAIN: local
+      GOTELEMETRY: 'off'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - name: Locate action's Node 24 runtime
+        id: node-runtime
+        uses: ./.github/actions/node-runtime
+      - name: Run all contributor and workflow checks on the action runtime
+        shell: bash
+        env:
+          NODE24: ${{ steps.node-runtime.outputs.path }}
+        run: go run ./cmd/check --node "$NODE24" --workflows
+      - name: Build all six platforms
+        run: go run ./cmd/package --require-clean --out .cache/package/dist --archives .cache/package/artifacts
+      - name: Verify reproducible builds and archives
+        shell: bash
+        run: |
+          go run ./cmd/package --require-clean --out .cache/package/dist-repro --archives .cache/package/artifacts-repro
+          diff -r .cache/package/dist .cache/package/dist-repro
+          diff -r .cache/package/artifacts .cache/package/artifacts-repro
+          go run ./cmd/verify-distribution --dist .cache/package/dist --archives .cache/package/artifacts
+      - name: Package and verify local lightweight fixture
+        run: |
+          go run ./cmd/package --require-clean --platform linux/amd64 --out .cache/package/light-dist --archives .cache/package/light-assets --native-download-base https://github.com/nicoheidtke/setup-go-faster/releases/download/local-validation
+          go run ./cmd/verify-distribution --platform linux/amd64 --dist .cache/package/light-dist --archives .cache/package/light-assets
+      - name: Install isolated fixture toolchain through prepared bundle
+        uses: ./.cache/package/dist
+        env:
+          RUNNER_TOOL_CACHE: ''
+          RUNNER_TEMP: ${{ runner.temp }}/package fixture with spaces
+        with:
+          go-version: '1.27.1'
+          cache: off
+      - name: Gate preparation on bundled codec and storage lifecycles
+        shell: bash
+        env:
+          SETUP_GO_FASTER_TEST_DIST: ${{ github.workspace }}/.cache/package/dist
+          SETUP_GO_FASTER_TEST_RUNNER_TEMP: ${{ runner.temp }}/package fixture with spaces
+          SETUP_GO_FASTER_TEST_VERSION: '1.27.1'
+          SETUP_GO_FASTER_TEST_NODE: ${{ steps.node-runtime.outputs.path }}
+          SETUP_GO_FASTER_TEST_BASH: bash
+        run: |
+          for compression in gzip zstd none; do
+            for storage in archive chunked; do
+              SETUP_GO_FASTER_TEST_COMPRESSION="$compression" SETUP_GO_FASTER_TEST_STORAGE="$storage" go test ./internal/cache -run '^TestPackagedLifecycle$' -count=1 -v
+            done
+          done
+          go test ./internal/cache -run '^TestPackagedCancellation$' -count=1 -v
+      - name: Gate preparation on verified lightweight bootstrap reuse
+        shell: bash
+        env:
+          SETUP_GO_FASTER_TEST_DIST: ${{ github.workspace }}/.cache/package/light-dist
+          SETUP_GO_FASTER_TEST_NATIVE_ASSETS: ${{ github.workspace }}/.cache/package/light-assets
+          SETUP_GO_FASTER_TEST_RUNNER_TEMP: ${{ runner.temp }}/package fixture with spaces
+          SETUP_GO_FASTER_TEST_VERSION: '1.27.1'
+          SETUP_GO_FASTER_TEST_NODE: ${{ steps.node-runtime.outputs.path }}
+        run: |
+          SETUP_GO_FASTER_TEST_COMPRESSION=zstd SETUP_GO_FASTER_TEST_STORAGE=archive go test ./internal/cache -run '^TestPackagedLifecycle$' -count=1 -v
+          SETUP_GO_FASTER_TEST_COMPRESSION=gzip SETUP_GO_FASTER_TEST_STORAGE=chunked go test ./internal/cache -run '^TestPackagedLifecycle$' -count=1 -v
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: action-distribution
+          path: |
+            .cache/package/artifacts/*
+          include-hidden-files: true
+          retention-days: 14
+  attest:
+    if: inputs.attest
+    needs: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # Only the opted-in signing job receives OIDC/attestation permissions.
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: action-distribution
+          path: .cache/attest
+      - name: Recheck same-run artifact payloads before signing
+        working-directory: .cache/attest
+        run: sha256sum -c SHA256SUMS
+      - name: Attest prepared artifacts from this run
+        id: provenance
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
+        with:
+          subject-path: .cache/attest/*
+          create-storage-record: false
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: action-attestation
+          path: ${{ steps.provenance.outputs.bundle-path }}
+          include-hidden-files: true
+          retention-days: 14

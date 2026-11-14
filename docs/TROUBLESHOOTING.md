@@ -1,0 +1,35 @@
+# Troubleshooting
+
+Start with the setup logs and the action's separate **Post …** step after regular job steps finish. With summaries enabled, the job summary has separate toolchain, restore, and save results. A restore hit or a printed save key does not prove that post saved a snapshot; check its final `SAVED`, `SKIP`, or `ERROR` result.
+
+This guide describes current source behavior. The [recommended published distribution](DEVELOPMENT.md#latest-published-distribution) has its own immutable source revision; newer diagnostic categories and safety limits require a newly packaged distribution. See [usage](USAGE.md) for input defaults and supported entrypoints.
+
+## Find the symptom
+
+| Symptom | What to check or change |
+| --- | --- |
+| `cache-hit` is `false`, or restore says `MISS` | Caching defaults to `off`. When enabled, first confirm that an earlier eligible run finished post with `SAVED`. Compare the selected exact Go version, OS/architecture, workflow/job, scope, layout, storage and codec, and check branch visibility. Dependency changes can use a compatible snapshot, but cannot bypass namespace or access restrictions. See [cache behavior](USAGE.md#cache-behavior). |
+| Restore says `partial`, or one split snapshot is `HIT` | Modules and build objects restore independently. `cache-hit` is true only when every requested snapshot succeeds; inspect each row's result and matched key. A matched key alone does not establish a successful restore. A partial restore can still benefit the workload. |
+| `snapshot chunk missing or evicted; nothing published` | A chunked manifest can outlive one of its referenced chunks. This is an ordinary miss for that snapshot; no part of it is published. Let the workload populate local caches and inspect the next eligible post-save. Repeated misses can justify comparing archive storage, including its separate cold cache and complete workflow cost. |
+| Post says `module content unchanged` | This is an expected split-layout optimization: content and permissions still match the validated restored module snapshot, so module upload is skipped. Build saves have their own result and normally remain fresh. |
+| Post is slow despite a restore hit | Build snapshots normally pack and upload again; changed module trees also pay a content check before packing. Inspect archive, module-check and transfer times separately. Consider restore-only or selective `cache-build-save` expressions using [save policies](USAGE.md#choosing-a-save-policy). More workers or smaller uploads do not by themselves establish a faster workflow. |
+| No save, or `build save disabled by input` | Check `cache: restore-save`, the `cache-build-save` expression, job conclusion, and post logs. Failed jobs save only when opted in; cancelled jobs never run the automatic save post. A setup/preparation failure or denied runner writes can also prevent save registration. See [save policies](USAGE.md#choosing-a-save-policy). |
+| Runner policy skips saving, or `cache access denied` | A known read-only policy intentionally skips writes; a service denial is an operational error. The action input cannot grant runner access. Use restore-only when writes are unavailable and inspect [action and runner policy](SECURITY_MODEL.md#action-policy-and-runner-policy). No PAT or extra `GITHUB_TOKEN` scope is needed; do not inject runtime credentials or override runner policy signals. |
+| Runtime credentials or post state are unavailable | Use the root Node action on a cache-v2-capable GitHub runner. The Bash composite installs Go only; it does not provide automatic cache saves. Standalone invocation cannot create the runner's lifecycle bridge. |
+| Native action cannot start or be acquired | Pin a published distribution commit, verify the supported OS/architecture and executable permissions, and distinguish bundled from lightweight mode. Lightweight mode needs public release-asset/CDN access and writable runner temporary storage. Use a bundle for offline or private-release environments; source-only commits have no executable. See [action acquisition](USAGE.md#action-acquisition). |
+| A cache transfer times out or reports DNS, TLS, or connection failure | Check runner connectivity, DNS, proxy/firewall configuration, certificate trust and clock as indicated by the category. Keep TLS verification enabled. Cache errors warn by default; `cache-strict: true` makes them fail for explicit correctness checks. See [retry boundaries](../internal/cachebackend/PROTOCOL.md); partially consumed responses and invalid archives are not retried. |
+| Size, metadata, or dependency-selection limit exceeded | Read the named operation and [resource limits](ARCHITECTURE.md). Narrow `cache-dependency-path` for oversized dependency selections; review cache size/content for archive limits. Metadata and installer expansion ceilings are independent of `cache-max-bytes`. Rejected restores do not replace existing local files. |
+
+## Locate the evidence
+
+Normal logs identify each snapshot's result, reason, transferred bytes, lookup/matched or save key, and elapsed work. Summaries provide the same operational outcome without full keys or paths. Follow [outputs and environment](USAGE.md#outputs-and-environment) to enable GitHub step debug logging when the normal result is insufficient.
+
+If `cache-report` is configured, setup writes the restore report and post writes `<cache-report>.post.json`. Regular artifact-upload steps run before post, so they cannot collect that later save report. Inspect completed post logs/debug output or arrange a later collector; an absent post report in an earlier artifact is not evidence of a failed save. Requested save keys are not evidence of publication.
+
+Use [metric boundaries](BENCHMARKS.md#metric-boundaries) when investigating elapsed time. Preparation is separate from restore totals, toolchain and prefetch work can overlap, and native phase sums do not equal complete workflow time. Compare acquisition, setup, workload and post together before changing a performance setting.
+
+## Share a useful reproduction
+
+For an [issue](https://github.com/nicoheidtke/setup-go-faster/issues), include a minimal redacted workflow, the pinned distribution SHA, selected Go version, runner OS/architecture and image, relevant inputs, event/branch context, expected behavior, and the actual per-snapshot restore and completed post outcomes. Include whether an earlier seed run really saved and whether the failure repeats with the same settings.
+
+Review excerpts and attachments before sharing. JSON reports and action outputs are unredacted machine data and may contain paths, full keys and error text; debug output can also reveal local paths. Remove credentials, signed URLs, private module names and source, and sensitive paths. Share only the necessary reviewed excerpts rather than raw environment dumps or complete reports. The [diagnostic privacy boundary](SECURITY_MODEL.md#cancellation-and-diagnostic-data) explains masking limits. Report suspected vulnerabilities privately through [SECURITY.md](../SECURITY.md).

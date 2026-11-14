@@ -1,0 +1,144 @@
+name: Installer validation
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  unit:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025, macos-15-intel]
+        go: ['1.26.8', '1.27.1']
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ matrix.go }}
+          cache: false
+      - name: Locate action's Node 24 runtime
+        id: node-runtime
+        uses: ./.github/actions/node-runtime
+      - name: Run contributor checks on the action runtime
+        shell: bash
+        env:
+          NODE24: ${{ steps.node-runtime.outputs.path }}
+        run: go run ./cmd/check --node "$NODE24"
+  workflows:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck= -pyflakes=
+  integration:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux/amd64
+          - os: ubuntu-24.04-arm
+            platform: linux/arm64
+          - os: macos-15-intel
+            platform: darwin/amd64
+          - os: macos-15
+            platform: darwin/arm64
+          - os: windows-2025
+            platform: windows/amd64
+          - os: windows-11-arm
+            platform: windows/arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      GOTOOLCHAIN: local
+      GOTELEMETRY: 'off'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - name: Package native executable
+        run: go run ./cmd/package --platform '${{ matrix.platform }}'
+      - name: Package and verify native lightweight fixture
+        run: |
+          go run ./cmd/package --require-clean --platform '${{ matrix.platform }}' --out .cache/native-light/dist --archives .cache/native-light/assets --native-download-base https://github.com/nicoheidtke/setup-go-faster/releases/download/local-validation
+          go run ./cmd/verify-distribution --platform '${{ matrix.platform }}' --dist .cache/native-light/dist --archives .cache/native-light/assets
+      - name: Cold install through composite launcher
+        id: cold
+        uses: ./dist/experimental/composite
+        env:
+          RUNNER_TOOL_CACHE: ''
+          RUNNER_TEMP: ${{ runner.temp }}/installer smoke with spaces
+        with:
+          go-version-file: testdata/smoke/go.mod
+      - name: Compile and test with selected toolchain
+        shell: bash
+        working-directory: testdata/smoke
+        run: |
+          test "$(go env GOVERSION)" = 'go1.26.0'
+          go build ./...
+          go test ./...
+      - name: Test well-known dependencies with selected toolchain
+        working-directory: testdata/packages
+        run: go test -mod=readonly -count=1 ./...
+      - name: Reuse through Node launcher with network disabled
+        id: warm
+        uses: ./dist/experimental/node
+        env:
+          RUNNER_TOOL_CACHE: ''
+          RUNNER_TEMP: ${{ runner.temp }}/installer smoke with spaces
+          HTTP_PROXY: http://127.0.0.1:1
+          HTTPS_PROXY: http://127.0.0.1:1
+          NO_PROXY: ''
+        with:
+          go-version-file: testdata/smoke/go.mod
+          check-latest: 'true'
+          cache: off
+      - name: Check action outputs
+        shell: bash
+        env:
+          COLD_ROOT: ${{ steps.cold.outputs.goroot }}
+          WARM_ROOT: ${{ steps.warm.outputs.goroot }}
+          WARM_VERSION: ${{ steps.warm.outputs.go-version }}
+        run: |
+          test "$COLD_ROOT" = "$WARM_ROOT"
+          test "$WARM_VERSION" = '1.26.0'
+      - name: Locate action Node runtime for packaged lifecycle fixtures
+        id: lifecycle-node
+        uses: ./.github/actions/node-runtime
+      - name: Native archive and chunked main/post fixtures
+        shell: bash
+        env:
+          SETUP_GO_FASTER_TEST_DIST: ${{ github.workspace }}/dist
+          SETUP_GO_FASTER_TEST_RUNNER_TEMP: ${{ runner.temp }}/installer smoke with spaces
+          SETUP_GO_FASTER_TEST_VERSION: '1.26.0'
+          SETUP_GO_FASTER_TEST_NODE: ${{ steps.lifecycle-node.outputs.path }}
+          SETUP_GO_FASTER_TEST_BASH: bash
+        run: |
+          for compression in gzip zstd none; do
+            for storage in archive chunked; do
+              SETUP_GO_FASTER_TEST_COMPRESSION="$compression" SETUP_GO_FASTER_TEST_STORAGE="$storage" go test ./internal/cache -run '^TestPackagedLifecycle$' -count=1 -v
+            done
+          done
+          go test ./internal/cache -run '^TestPackagedCancellation$' -count=1 -v
+      - name: Native lightweight main/post bootstrap and reuse
+        shell: bash
+        env:
+          SETUP_GO_FASTER_TEST_DIST: ${{ github.workspace }}/.cache/native-light/dist
+          SETUP_GO_FASTER_TEST_NATIVE_ASSETS: ${{ github.workspace }}/.cache/native-light/assets
+          SETUP_GO_FASTER_TEST_RUNNER_TEMP: ${{ runner.temp }}/installer smoke with spaces
+          SETUP_GO_FASTER_TEST_VERSION: '1.26.0'
+          SETUP_GO_FASTER_TEST_NODE: ${{ steps.lifecycle-node.outputs.path }}
+        run: |
+          SETUP_GO_FASTER_TEST_COMPRESSION=zstd SETUP_GO_FASTER_TEST_STORAGE=archive go test ./internal/cache -run '^TestPackagedLifecycle$' -count=1 -v
+          SETUP_GO_FASTER_TEST_COMPRESSION=gzip SETUP_GO_FASTER_TEST_STORAGE=chunked go test ./internal/cache -run '^TestPackagedLifecycle$' -count=1 -v

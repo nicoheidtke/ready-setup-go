@@ -1,0 +1,206 @@
+name: Manual cache benchmarks
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: Hosted platform; repeat measurements on each target platform
+        type: choice
+        options: [ubuntu-24.04, ubuntu-24.04-arm, macos-15-intel, macos-15, windows-2025, windows-11-arm]
+        default: ubuntu-24.04
+      workload:
+        description: Select one workload family; Exasol preserves parallel build/test/lint jobs
+        type: choice
+        options: [small, monorepo, exasol, all]
+        default: small
+      scenario:
+        description: One controlled change per dispatch
+        type: choice
+        options: [cold, unchanged, source, dependency, go-upgrade]
+        default: unchanged
+      samples:
+        description: Paired cache-off/cache-enabled samples, minimum 20
+        default: '20'
+      go-version:
+        description: Exact workload Go version; select a different version from seed for go-upgrade
+        default: '1.26.8'
+      seed-go-version:
+        description: Exact seed Go version (used only for go-upgrade)
+        default: '1.26.8'
+      layout:
+        type: choice
+        description: Measure one archive layout at a time
+        options: [split, combined]
+        default: split
+      compression:
+        type: choice
+        description: Measure one compression method at a time
+        options: [gzip, zstd, none]
+        default: gzip
+      chunk-concurrency:
+        description: Parallel chunk workers, 1 through 16
+        default: '4'
+      compression-concurrency:
+        description: Whole-archive compression workers, 1 through 16
+        default: '4'
+      restore-concurrency:
+        description: Validated-file publication workers, 1 through 16
+        default: '4'
+      storage:
+        type: choice
+        description: Whole archive or content-defined chunked snapshots
+        options: [archive, chunked]
+        default: archive
+      mode:
+        type: choice
+        description: Cache-enabled candidate; baseline always off
+        options: [restore-save, restore]
+        default: restore-save
+      dependency:
+        description: Exact module@version for dependency scenario; must change manifests
+        default: github.com/google/uuid@v1.5.0
+      max-bytes:
+        description: Uncompressed archive and transferred archive byte limit
+        default: '10737418240'
+      upload-concurrency:
+        description: Parallel blob upload workers, 1 through 32
+        default: '4'
+      download-concurrency:
+        description: Parallel whole-archive download workers, 1 through 32
+        default: '4'
+      download-chunk-bytes:
+        description: Whole-archive download range bytes, 1 through 4194304000
+        default: '33554432'
+      upload-chunk-bytes:
+        description: Blob upload block bytes, 1 through 4194304000
+        default: '33554432'
+      build-max-age:
+        description: Optional archive-only build cache age filter, zero disables
+        default: '0'
+permissions:
+  contents: read
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - id: plan
+        shell: bash
+        env:
+          WORKLOAD: ${{ inputs.workload }}
+          MEASURED_RUNNER: ${{ inputs.runner }}
+        run: |
+          case "$WORKLOAD" in
+            small) matrix='["small"]' ;;
+            monorepo) matrix='["monorepo"]' ;;
+            exasol)
+              case "$MEASURED_RUNNER" in
+                ubuntu-*) matrix='["exasol-build","exasol-test","exasol-lint"]' ;;
+                windows-*) matrix='["exasol-build"]' ;;
+                *) echo 'Exasol acceptance currently supports Linux build/test/lint and Windows build; choose small/monorepo for macOS.' >&2; exit 1 ;;
+              esac ;;
+            all)
+              case "$MEASURED_RUNNER" in
+                ubuntu-*) matrix='["small","monorepo","exasol-build","exasol-test","exasol-lint"]' ;;
+                windows-*) matrix='["small","monorepo","exasol-build"]' ;;
+                *) matrix='["small","monorepo"]' ;;
+              esac ;;
+            *) exit 1 ;;
+          esac
+          echo "matrix={\"workload\":$matrix}" >> "$GITHUB_OUTPUT"
+  benchmark:
+    needs: plan
+    name: cache-benchmark/${{ inputs.runner }}/${{ matrix.workload }}/${{ inputs.scenario }}/${{ inputs.layout }}/${{ inputs.compression }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 355
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      GOTOOLCHAIN: local
+      GOTELEMETRY: 'off'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - name: Build native action and benchmark helper
+        shell: bash
+        run: |
+          case "$RUNNER_OS" in Linux) platform=linux ;; macOS) platform=darwin ;; Windows) platform=windows ;; esac
+          case "$RUNNER_ARCH" in X64) arch=amd64 ;; ARM64) arch=arm64 ;; esac
+          go run ./cmd/package --platform "$platform/$arch"
+          go build -o "$RUNNER_TEMP/cache-benchmark.exe" ./cmd/cache-benchmark
+      - name: Install seed toolchain
+        if: inputs.scenario == 'go-upgrade'
+        id: seed
+        uses: ./dist
+        with:
+          go-version: ${{ inputs.seed-go-version }}
+          cache: off
+      - name: Install workload toolchain
+        id: target
+        uses: ./dist
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache: off
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: startsWith(matrix.workload, 'exasol-')
+        with:
+          repository: exasol/exasol-personal
+          ref: 54b7e1a7454f49d821102bcab5bfce2c7747f8c6
+          path: _workload
+          persist-credentials: false
+      - name: measure/paired-native-cache-lifecycle
+        uses: ./.github/actions/cache-benchmark
+        with:
+          helper: ${{ runner.temp }}/cache-benchmark.exe
+          go: ${{ steps.target.outputs.goroot }}/bin/go
+          seed-go: ${{ inputs.scenario == 'go-upgrade' && format('{0}/bin/go', steps.seed.outputs.goroot) || '' }}
+          source: ${{ startsWith(matrix.workload, 'exasol-') && format('{0}/_workload', github.workspace) || format('{0}/testdata/packages', github.workspace) }}
+          workload: ${{ matrix.workload }}
+          scenario: ${{ inputs.scenario }}
+          samples: ${{ inputs.samples }}
+          mode: ${{ inputs.mode }}
+          layout: ${{ inputs.layout }}
+          chunk-concurrency: ${{ inputs.chunk-concurrency }}
+          compression-concurrency: ${{ inputs.compression-concurrency }}
+          restore-concurrency: ${{ inputs.restore-concurrency }}
+          storage: ${{ inputs.storage }}
+          compression: ${{ inputs.compression }}
+          dependency: ${{ inputs.dependency }}
+          max-bytes: ${{ inputs.max-bytes }}
+          upload-concurrency: ${{ inputs.upload-concurrency }}
+          download-concurrency: ${{ inputs.download-concurrency }}
+          download-chunk-bytes: ${{ inputs.download-chunk-bytes }}
+          upload-chunk-bytes: ${{ inputs.upload-chunk-bytes }}
+          build-max-age: ${{ inputs.build-max-age }}
+          out: cache-reports/observations.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: cache-${{ matrix.workload }}-${{ inputs.scenario }}-${{ inputs.layout }}-${{ inputs.compression }}
+          path: cache-reports/
+  report:
+    if: always()
+    needs: benchmark
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - run: go run ./cmd/workflow-report --out workflow-timings.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cache-workflow-timings
+          path: workflow-timings.json

@@ -1,0 +1,34 @@
+name: Setup Go Faster (Bash installation experiment)
+description: Installation-only composite launcher for paired launcher measurements. Cache lifecycle requires the root Node action.
+inputs:
+  go-version:
+    description: Exact Go version or minor selector.
+    required: false
+  go-version-file:
+    description: Workspace-relative go.mod or go.work path. Explicit go-version takes precedence.
+    required: false
+  check-latest:
+    description: Resolve minor selectors against official releases.
+    default: 'false'
+  summary:
+    description: Write concise toolchain results to the GitHub job summary.
+    default: 'true'
+outputs:
+  go-version:
+    description: Selected exact Go version.
+    value: ${{ steps.setup.outputs.go-version }}
+  goroot:
+    description: Selected toolchain directory.
+    value: ${{ steps.setup.outputs.goroot }}
+runs:
+  using: composite
+  steps:
+    - id: setup
+      shell: bash
+      env:
+        SETUP_GO_FASTER_ROOT: ${{ github.action_path }}/../..
+        SETUP_GO_FASTER_VERSION: ${{ inputs.go-version }}
+        SETUP_GO_FASTER_VERSION_FILE: ${{ inputs.go-version-file }}
+        SETUP_GO_FASTER_LATEST: ${{ inputs.check-latest }}
+        SETUP_GO_FASTER_SUMMARY: ${{ inputs.summary }}
+      run: 'source "$SETUP_GO_FASTER_ROOT/launch.sh" --cache=off'

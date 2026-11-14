@@ -1,0 +1,7 @@
+/dist/
+/bin/
+/.cache/
+/benchmark-results/
+/artifacts/
+*.test
+coverage.out

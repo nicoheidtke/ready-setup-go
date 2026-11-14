@@ -1,0 +1,106 @@
+name: Setup Go Faster
+description: Install Go 1.26+ with a native installer and no runtime downloads of the action itself.
+inputs:
+  go-version:
+    description: Exact Go version or minor selector, such as 1.26.1 or 1.26.x.
+    required: false
+  go-version-file:
+    description: Workspace-relative go.mod or go.work path. Explicit go-version takes precedence.
+    required: false
+  check-latest:
+    description: Resolve minor selectors against official releases instead of preferring installed patches.
+    default: 'false'
+  summary:
+    description: Write concise toolchain and cache results to the GitHub job summary.
+    default: 'true'
+  cache:
+    description: Cache mode, off, restore, or restore-save. Cache failures warn unless cache-strict is true.
+    default: off
+  cache-scope:
+    description: Explicit matrix or workload variant namespace, in addition to repository/workflow/job identity.
+    default: ''
+  cache-module-scope:
+    description: Opt-in repository module sharing group across workflows, jobs, scopes, and Go versions. Requires split layout and trusted writers.
+    default: ''
+  cache-gzip-level:
+    description: Gzip compression level, default or 1 through 9. Lower levels favor compression speed over size.
+    default: default
+  cache-layout:
+    description: Separate modules/build snapshots (split) or one combined snapshot (combined).
+    default: split
+  cache-chunk-concurrency:
+    description: Parallel chunk compression and transfer workers, 1 through 16; chunked storage only.
+    default: '4'
+  cache-storage:
+    description: Whole archive or content-defined chunked snapshots using GitHub cache storage.
+    default: archive
+  cache-overlap:
+    description: Prefetch caches while the selected toolchain installs; merge after installation.
+    default: 'true'
+  cache-compression:
+    description: Archive compression, gzip, zstd, or none.
+    default: gzip
+  cache-compression-concurrency:
+    description: Whole-archive compression workers, 1 through 16. Chunked storage has its own workers.
+    default: '4'
+  cache-restore-concurrency:
+    description: Validated-file publication workers, 1 through 16. Set 1 for sequential publication.
+    default: '4'
+  cache-dependency-path:
+    description: Newline-separated workspace-relative manifest files or recursively scanned directories. Default scans all modules, excluding cache/output/vendor directories.
+    default: ''
+  cache-build-save:
+    description: Save build snapshots in split layout. Set false or use a workflow expression to reduce save frequency; module saves and restores are unaffected.
+    default: 'true'
+  cache-build-max-age:
+    description: Optional snapshot-only build entry age filter, e.g. 120h. Zero disables trimming; module entries are never age-filtered.
+    default: '0'
+  cache-max-bytes:
+    description: Maximum expanded payload bytes per archive (1 through 10737418240).
+    default: '10737418240'
+  cache-strict:
+    description: Fail setup/post instead of warning on unavailable credentials, transport, or archive errors.
+    default: 'false'
+  cache-upload-concurrency:
+    description: Parallel upload worker count, 1 through 32.
+    default: '4'
+  cache-download-concurrency:
+    description: Parallel whole-archive download workers, 1 through 32. Set 1 for a single GET.
+    default: '4'
+  cache-download-chunk-bytes:
+    description: Whole-archive download range size in bytes, 1 through 4194304000.
+    default: '33554432'
+  cache-upload-chunk-bytes:
+    description: Upload block size in bytes, 1 through 4194304000.
+    default: '33554432'
+  cache-save-on-failure:
+    description: Also save snapshots after failed jobs. Cancelled jobs never save.
+    default: 'false'
+  cache-report:
+    description: Optional restore JSON file path. Post-job save report uses this path plus .post.json.
+    default: ''
+outputs:
+  go-version:
+    description: Selected exact Go version.
+  goroot:
+    description: Selected toolchain directory.
+  cache-hit:
+    description: True when every requested archive restored successfully; false on a miss or unavailable cache.
+  cache-key:
+    description: Comma-separated fresh immutable snapshot keys.
+  cache-matched-key:
+    description: Comma-separated keys returned by compatible-prefix lookup.
+  cache-restored-bytes:
+    description: Received archive payload bytes.
+  cache-restore-ms:
+    description: Cache restore operation elapsed milliseconds, excluding path discovery and dependency hashing.
+runs:
+  using: node24
+  main: launch.cjs
+  post: post.cjs
+  # Inputs are unavailable when the runner evaluates a post condition. The Go
+  # main writes this unique per-action flag through GITHUB_ENV instead.
+  post-if: "!cancelled() && (success() || env[format('SETUP_GO_FASTER_SAVE_ON_FAILURE_{0}', github.action)] == 'true')"
+branding:
+  icon: download
+  color: blue

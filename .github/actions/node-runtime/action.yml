@@ -1,0 +1,8 @@
+name: Locate runner Node runtime
+description: Return the exact executable used for a node24 action, outside measured steps.
+outputs:
+  path:
+    description: Absolute Node executable path.
+runs:
+  using: node24
+  main: locate.cjs
