@@ -2,11 +2,15 @@
 
 Set up Go in GitHub Actions, with more control over how your module and build caches get reused and refreshed.
 
+This is still a personal experiment. I started it because I got annoyed by how inefficient the standard `actions/setup-go` action felt and wanted to see if I could do better.
+
+Feel free to use it and tell me how it goes. Bug reports, ideas, and general feedback are welcome in [issues](https://github.com/nicoheidtke/setup-go-faster/issues). I haven't tested every target platform and workflow scenario yet; the [current validation status](docs/DEVELOPMENT.md#support-and-validation-status) explains what's covered and what still needs checking.
+
 It reuses a matching Go installation if one is already there. Otherwise, it downloads an official release and verifies it before installing it. The action itself runs prebuilt Go executables, so there's nothing to compile and no npm packages to install in your workflow.
 
 The cache behavior is the main difference. With `cache: restore-save`, a job can restore a build cache and still save a fresh snapshot when it's done. You don't have to wait for a dependency change to refresh it. Module caches are handled separately by default, and unchanged module contents aren't uploaded again.
 
-It supports **Go 1.26+** on Linux, macOS and Windows, on both amd64 and arm64. **Caching is off by default.** Turn it on if you want it.
+It targets **Go 1.26+** on Linux, macOS and Windows, on both amd64 and arm64. **Caching is off by default.** Turn it on if you want it.
 
 ## Quick start
 
