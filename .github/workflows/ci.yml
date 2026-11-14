@@ -89,9 +89,6 @@ jobs:
       - name: Cold install through composite launcher
         id: cold
         uses: ./dist/experimental/composite
-        env:
-          RUNNER_TOOL_CACHE: ''
-          RUNNER_TEMP: ${{ runner.temp }}/installer smoke with spaces
         with:
           go-version-file: testdata/smoke/go.mod
       - name: Compile and test with selected toolchain
@@ -108,8 +105,6 @@ jobs:
         id: warm
         uses: ./dist/experimental/node
         env:
-          RUNNER_TOOL_CACHE: ''
-          RUNNER_TEMP: ${{ runner.temp }}/installer smoke with spaces
           HTTP_PROXY: http://127.0.0.1:1
           HTTPS_PROXY: http://127.0.0.1:1
           NO_PROXY: ''
@@ -129,11 +124,22 @@ jobs:
       - name: Locate action Node runtime for packaged lifecycle fixtures
         id: lifecycle-node
         uses: ./.github/actions/node-runtime
+      - name: Ensure the native fixture toolchain is installed
+        shell: bash
+        env:
+          TARGET_PLATFORM: ${{ matrix.platform }}
+        run: |
+          native="dist/bin/${TARGET_PLATFORM//\//-}/setup-go-faster"
+          if [[ "$TARGET_PLATFORM" == windows/* ]]; then native+='.exe'; fi
+          # Set child-process configuration rather than overriding reserved
+          # RUNNER_* variables in workflow env. Keep the build compiler active.
+          RUNNER_TOOL_CACHE='' GITHUB_ENV='' GITHUB_PATH='' GITHUB_OUTPUT='' GITHUB_STEP_SUMMARY='' \
+            "$native" setup --go-version=1.26.0 --cache=off --summary=false
       - name: Native archive and chunked main/post fixtures
         shell: bash
         env:
           SETUP_GO_FASTER_TEST_DIST: ${{ github.workspace }}/dist
-          SETUP_GO_FASTER_TEST_RUNNER_TEMP: ${{ runner.temp }}/installer smoke with spaces
+          SETUP_GO_FASTER_TEST_RUNNER_TEMP: ${{ runner.temp }}
           SETUP_GO_FASTER_TEST_VERSION: '1.26.0'
           SETUP_GO_FASTER_TEST_NODE: ${{ steps.lifecycle-node.outputs.path }}
           SETUP_GO_FASTER_TEST_BASH: bash
@@ -149,7 +155,7 @@ jobs:
         env:
           SETUP_GO_FASTER_TEST_DIST: ${{ github.workspace }}/.cache/native-light/dist
           SETUP_GO_FASTER_TEST_NATIVE_ASSETS: ${{ github.workspace }}/.cache/native-light/assets
-          SETUP_GO_FASTER_TEST_RUNNER_TEMP: ${{ runner.temp }}/installer smoke with spaces
+          SETUP_GO_FASTER_TEST_RUNNER_TEMP: ${{ runner.temp }}
           SETUP_GO_FASTER_TEST_VERSION: '1.26.0'
           SETUP_GO_FASTER_TEST_NODE: ${{ steps.lifecycle-node.outputs.path }}
         run: |

@@ -127,6 +127,15 @@ func TestParallelRestorePreservesModesTimesAndLocalFiles(t *testing.T) {
 		t.Run(fmt.Sprint(workers), func(t *testing.T) {
 			parent := tempDir(t)
 			source, dest := filepath.Join(parent, "source"), filepath.Join(parent, "dest")
+			// Preserve read-only assertions until the test finishes, then allow
+			// TempDir cleanup to remove children on Unix filesystems.
+			t.Cleanup(func() {
+				for _, name := range []string{filepath.Join(source, "new-readonly"), filepath.Join(source, "module@v1"), filepath.Join(dest, "module@v1"), filepath.Join(dest, "new-readonly")} {
+					if err := os.Chmod(name, 0755); err != nil && !errors.Is(err, fs.ErrNotExist) {
+						t.Errorf("restore fixture directory permissions: %v", err)
+					}
+				}
+			})
 			stamp := time.Unix(1700000000, 123456700)
 			for i := range 32 {
 				write(t, source, fmt.Sprintf("module@v1/sub/file%d", i), fmt.Sprint(i), 0444, stamp)
