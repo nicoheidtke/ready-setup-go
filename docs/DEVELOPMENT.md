@@ -113,6 +113,8 @@ Windows skips this fixture explicitly: Node child termination uses forceful Wind
 
 Workflows are manual; maintainers control execution and costs. Native integration checks all six targets without multiplying matrix jobs: each runs bundled main/post fixtures for gzip/zstd/none with archive/chunked storage, one platform-appropriate cancellation fixture, and lightweight archive/zstd plus chunked/gzip bootstrap/reuse cases. The lightweight fixtures use local packaged assets, not public release downloads. The release workflow resolves a fixed source SHA and passes it to that complete validation suite, then independently gates artifact upload on the same cases on Linux amd64 and complete contributor/workflow checks; its Linux preparation fixtures remain separate from six-native validation. The consumer workflow takes a full distribution SHA and checks the published bundle.
 
+Each native integration and release preparation job compiles the cache test executable once, then starts a fresh process for each fixture case from `internal/cache`, preserving package-relative paths and the ten-minute per-process test timeout. The two release distribution builds remain separate for byte-for-byte reproducibility verification.
+
 Use `cache-validation.yml` with a fresh scope for each independent probe. Fix source/toolchain, runner, dependencies, job identity, and settings within each pair. Inspect completed post logs before treating `probe.json` intended `fresh_keys` as saved entries. `expect-hit` requires a complete restore; `expect-miss` requires no match or payload; `expected-match` requires exact reviewed seed keys.
 
 | Case | Required observation |
