@@ -32,7 +32,10 @@ jobs:
       - uses: actions/setup-go@v7.0.0
         with:
           go-version: ${{ matrix.go }}
-          cache: false
+          cache: true
+          cache-dependency-path: |
+            go.mod
+            go.sum
       - name: Locate action's Node 24 runtime
         id: node-runtime
         uses: ./.github/actions/node-runtime
@@ -51,7 +54,12 @@ jobs:
       - uses: actions/setup-go@v7.0.0
         with:
           go-version: '1.27.1'
-          cache: false
+          cache: true
+          # Include the lint tool pin and keep its cache separate from unit jobs.
+          cache-dependency-path: |
+            go.mod
+            go.sum
+            .github/workflows/ci.yml
       - run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck= -pyflakes=
       - name: Verify workflow dependency lockfile
         env:
