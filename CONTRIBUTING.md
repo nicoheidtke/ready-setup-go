@@ -105,6 +105,6 @@ Performance claims need reproducible evidence following the [measurement methodo
 
 Keep the change focused and update the document that owns the affected behavior. Explain the problem and resulting behavior, compatibility implications, checks run, and anything skipped or unverified. Include a reproduction for a bug and representative evidence for a performance claim. Review considers correctness, public compatibility, resource bounds, maintainability, and adequate validation.
 
-Repository workflows are manual. Maintainers control hosted execution and publication; the boundaries are in [AGENTS.md](AGENTS.md#maintainer-operations). Source-only revisions are not runnable action distributions. Merge source and documentation PRs into `main`, then follow the [release checklist](docs/RELEASES.md#maintainer-checklist); generated distribution history is never merged back.
+Repository workflows are manual. Maintainers control hosted execution and publication; the boundaries are in [AGENTS.md](AGENTS.md#maintainer-operations). Source-only revisions are not runnable action distributions. Merge source and documentation PRs into `main` or the maintained source release branch, then follow the [release checklist](docs/RELEASES.md#maintainer-checklist); generated distribution history is never merged back.
 
 Contributions are made under the project's [MIT license](LICENSE).

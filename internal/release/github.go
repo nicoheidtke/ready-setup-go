@@ -131,7 +131,7 @@ func (g *github) findRelease(ctx context.Context, base, tag string) (*remoteRele
 func (g *github) publish(ctx context.Context, p *Plan) (string, error) {
 	base := g.base + "/repos/" + p.Config.Repository + "/releases"
 	latest := "false"
-	if p.Config.Promote {
+	if p.MakeLatest {
 		latest = "true"
 	}
 	found, err := g.findRelease(ctx, base, p.Config.Tag)

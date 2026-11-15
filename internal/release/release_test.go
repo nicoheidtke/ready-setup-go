@@ -211,18 +211,18 @@ func TestAtomicPushLeasesUseOnlyTemporaryBareRemote(t *testing.T) {
 	testGit(t, r.Root, "push", "--quiet", "origin", p.Source+":"+p.Config.SourceRef, p.ExpectedDistribution+":"+p.Config.DistributionRef)
 	tree := testGit(t, r.Root, "rev-parse", p.Source+"^{tree}")
 	other := testGit(t, r.Root, "commit-tree", tree, "-p", p.Source, "-m", "competing source")
-	testGit(t, r.Root, "push", "--quiet", "origin", other+":"+p.Config.SourceRef)
+	testGit(t, r.Root, "push", "--quiet", "origin", other+":"+p.Config.DistributionRef)
 	if err := r.pushPlan(ctx, p); err == nil {
-		t.Fatal("stale source lease accepted")
+		t.Fatal("stale distribution lease accepted")
 	}
-	if got := testGit(t, r.Root, "--git-dir="+bare, "rev-parse", p.Config.DistributionRef); got != p.ExpectedDistribution {
-		t.Fatal("failed atomic push partially updated distribution")
+	if got := testGit(t, r.Root, "--git-dir="+bare, "rev-parse", p.Config.DistributionRef); got != other {
+		t.Fatal("failed atomic push changed the competing distribution")
 	}
 	cmd := exec.Command("git", "--git-dir="+bare, "show-ref", "--verify", "refs/tags/"+p.Config.Tag)
 	if err := cmd.Run(); err == nil {
 		t.Fatal("failed atomic push partially created tag")
 	}
-	testGit(t, r.Root, "--git-dir="+bare, "update-ref", p.Config.SourceRef, p.ExpectedSource, other)
+	testGit(t, r.Root, "--git-dir="+bare, "update-ref", p.Config.DistributionRef, p.ExpectedDistribution, other)
 	if err := r.pushPlan(ctx, p); err != nil {
 		t.Fatal(err)
 	}
@@ -321,7 +321,7 @@ func apiFixture(t *testing.T, options apiOptions) (*github, *Plan, *int, *bool) 
 			}
 			wantPreview := false
 			wantLatest := "false"
-			if p.Config.Promote {
+			if p.MakeLatest {
 				wantLatest = "true"
 			}
 			if request.Draft || request.Prerelease != wantPreview || request.Latest != wantLatest {
@@ -595,7 +595,7 @@ func TestFirstReleaseAtomicPushAndResume(t *testing.T) {
 func TestStablePublicationAndClassificationConflict(t *testing.T) {
 	g, p, count, published := apiFixture(t, apiOptions{})
 	p.Config.Tag = "v1.0.0"
-	p.Config.Promote = true
+	p.MakeLatest = true
 	if _, err := g.publish(context.Background(), p); err != nil {
 		t.Fatal(err)
 	}
@@ -616,7 +616,7 @@ func TestAliasPlanAndPromotion(t *testing.T) {
 	r, initial, path, refs := fixture(t)
 	c := initial.Config
 	c.Tag = "v1.2.3"
-	c.Promote = true
+	c.UpdateAliases = true
 	ctx := context.Background()
 	refs["refs/tags/v1.1.0"] = initial.Source
 	p, err := r.CreatePlan(ctx, c)
@@ -675,23 +675,40 @@ func TestAliasPlanAndPromotion(t *testing.T) {
 	}
 }
 
-func TestPromotionRejectsDowngradeAndAllowsMaintenance(t *testing.T) {
-	r, p, _, refs := fixture(t)
-	refs["refs/tags/v2.10.0"] = p.Source
-	c := p.Config
-	c.Tag = "v2.9.99"
-	c.Promote = true
-	if _, err := r.CreatePlan(context.Background(), c); err == nil {
-		t.Fatal("downgrade accepted")
+func TestIndependentPublicationPolicies(t *testing.T) {
+	for _, tc := range []struct {
+		name, tag, latest     string
+		aliases               bool
+		versions, wantAliases []string
+		wantLatest            bool
+	}{
+		{"first", "v1.0.0", "auto", true, nil, []string{"refs/tags/v1", "refs/tags/v1.0"}, true},
+		{"backport", "v1.4.2", "auto", true, []string{"v1.4.1", "v2.0.0"}, []string{"refs/tags/v1", "refs/tags/v1.4"}, false},
+		{"old-minor", "v1.4.2", "auto", true, []string{"v1.4.1", "v1.5.0"}, []string{"refs/tags/v1.4"}, false},
+		{"older-patch", "v1.4.0", "auto", true, []string{"v1.4.1"}, nil, false},
+		{"fixed-only", "v1.4.2", "false", false, []string{"v2.0.0"}, nil, false},
+		{"latest-only", "v3.0.0", "true", false, []string{"v2.0.0"}, nil, true},
+		{"explicit-latest", "v1.0.0", "true", true, []string{"v2.0.0"}, []string{"refs/tags/v1", "refs/tags/v1.0"}, true},
+		{"no-latest", "v3.0.0", "false", true, nil, []string{"refs/tags/v3", "refs/tags/v3.0"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			refs := map[string]string{}
+			for _, tag := range tc.versions {
+				refs["refs/tags/"+tag] = strings.Repeat("a", 40)
+			}
+			aliases, latest := publicationPolicy(Config{Tag: tc.tag, UpdateAliases: tc.aliases, MakeLatest: tc.latest}, refs)
+			if latest != tc.wantLatest || strings.Join(sortedKeys(aliases), ",") != strings.Join(tc.wantAliases, ",") {
+				t.Fatalf("aliases=%v latest=%t", aliases, latest)
+			}
+		})
 	}
-	c.Promote = false
-	maintenance, err := r.CreatePlan(context.Background(), c)
-	if err != nil || len(maintenance.ExpectedAliases) != 0 {
-		t.Fatalf("maintenance: %v", err)
+	refs := map[string]string{"refs/tags/v1.3.0": "", "refs/tags/v1.4.1": "", "refs/tags/v1.5.0": "", "refs/tags/v2.0.0": ""}
+	if got := PreviousVersion("v1.4.2", refs); got != "v1.4.1" {
+		t.Fatal(got)
 	}
 	for _, pair := range [][2]string{{"v1.9.9", "v1.10.0"}, {"v2.0.0", "v10.0.0"}, {"v1.0.9", "v1.0.10"}} {
 		if !versionLess(pair[0], pair[1]) || versionLess(pair[1], pair[0]) {
-			t.Fatal("version ordering", pair)
+			t.Fatal(pair)
 		}
 	}
 }
@@ -699,7 +716,157 @@ func TestPromotionRejectsDowngradeAndAllowsMaintenance(t *testing.T) {
 func TestPlanRequiresMergedSource(t *testing.T) {
 	r, p, _, refs := fixture(t)
 	refs[p.Config.SourceRef] = strings.Repeat("f", 40)
-	if _, err := r.CreatePlan(context.Background(), p.Config); err == nil || !strings.Contains(err.Error(), "merge source PRs") {
+	if _, err := r.CreatePlan(context.Background(), p.Config); err == nil || !strings.Contains(err.Error(), "belong to the remote source branch") {
 		t.Fatalf("unmerged source accepted: %v", err)
+	}
+}
+
+func TestHistoricalPlanNeverPushesSource(t *testing.T) {
+	r, initial, path, refs := fixture(t)
+	ctx := context.Background()
+	tree := testGit(t, r.Root, "rev-parse", initial.Source+"^{tree}")
+	newer := testGit(t, r.Root, "commit-tree", tree, "-p", initial.Source, "-m", "newer main")
+	refs[initial.Config.SourceRef] = newer
+	testGit(t, r.Root, "checkout", "--detach", initial.Source)
+	c := initial.Config
+	c.SourceAnchor = ""
+	p, err := r.CreatePlan(ctx, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Source != initial.Source || p.ExpectedSource != newer {
+		t.Fatal("source snapshot changed")
+	}
+	if err = r.Prepare(ctx, p, path); err != nil {
+		t.Fatal(err)
+	}
+	bare := filepath.Join(t.TempDir(), "remote.git")
+	testGit(t, r.Root, "init", "--bare", "--quiet", bare)
+	testGit(t, r.Root, "remote", "add", "origin", bare)
+	testGit(t, r.Root, "push", "--quiet", "origin", newer+":"+p.Config.SourceRef, p.ExpectedDistribution+":"+p.Config.DistributionRef)
+	if err = r.pushPlan(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	if got := testGit(t, r.Root, "--git-dir="+bare, "rev-parse", p.Config.SourceRef); got != newer {
+		t.Fatal("historical release moved source branch", got)
+	}
+	refs[p.Config.DistributionRef], refs["refs/tags/"+p.Config.Tag] = p.Distribution, p.TagObject
+	refs[p.Config.SourceRef] = testGit(t, r.Root, "commit-tree", tree, "-p", newer, "-m", "later main")
+	if done, err := r.CheckPush(ctx, p); err != nil || !done {
+		t.Fatalf("source advance retargeted saved plan: %t %v", done, err)
+	}
+}
+
+func TestSourceResolutionRejectsUnrelatedAndMalformedCommits(t *testing.T) {
+	r, p, _, refs := fixture(t)
+	bare := filepath.Join(t.TempDir(), "remote.git")
+	testGit(t, r.Root, "init", "--bare", "--quiet", bare)
+	testGit(t, r.Root, "remote", "add", "origin", bare)
+	tree := testGit(t, r.Root, "rev-parse", p.Source+"^{tree}")
+	newer := testGit(t, r.Root, "commit-tree", tree, "-p", p.Source, "-m", "newer main")
+	testGit(t, r.Root, "push", "--quiet", "origin", newer+":"+p.Config.SourceRef)
+	refs[p.Config.SourceRef] = newer
+	selected, err := r.ResolveSource(context.Background(), "fixture/action", "origin", "main", p.Source, "v1.0.1")
+	if err != nil || selected.Source != p.Source || selected.Anchor != newer {
+		t.Fatalf("history selection: %+v %v", selected, err)
+	}
+	tip, err := r.ResolveSource(context.Background(), "fixture/action", "origin", "main", "", "v1.0.1")
+	if err != nil || tip.Source != newer {
+		t.Fatalf("branch tip selection: %+v %v", tip, err)
+	}
+	unrelated := testGit(t, r.Root, "commit-tree", tree, "-m", "unrelated")
+	for _, revision := range []string{unrelated, "HEAD~1", p.Source[:10], "--help"} {
+		if _, err := r.ResolveSource(context.Background(), "fixture/action", "origin", "main", revision, "v1.0.1"); err == nil {
+			t.Fatal("invalid source accepted", revision)
+		}
+	}
+	for _, branch := range []string{"main~1", "main.lock", "../main", "missing"} {
+		if _, err := r.ResolveSource(context.Background(), "fixture/action", "origin", branch, "", "v1.0.1"); err == nil {
+			t.Fatal("invalid branch accepted", branch)
+		}
+	}
+}
+
+func TestTrustedRequestBindsAllPublicationOptions(t *testing.T) {
+	_, p, _, _ := fixture(t)
+	request := Request{Config: p.Config, Source: p.Source}
+	data, err := json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "request.json")
+	if err = os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = CheckRequest(path, p); err != nil {
+		t.Fatal(err)
+	}
+	for _, mutate := range []func(*Plan){
+		func(p *Plan) { p.Config.DistributionRef = "refs/heads/main" },
+		func(p *Plan) { p.Config.Repository = "other/repository" },
+		func(p *Plan) { p.Config.Notes = "changed notes" },
+		func(p *Plan) { p.Config.MakeLatest = "true" },
+		func(p *Plan) { p.Config.UpdateAliases = !p.Config.UpdateAliases },
+		func(p *Plan) { p.Config.Dist = filepath.Dir(p.Config.Dist) },
+		func(p *Plan) { p.Source = strings.Repeat("f", 40) },
+	} {
+		altered := *p
+		mutate(&altered)
+		if err = CheckRequest(path, &altered); err == nil {
+			t.Fatal("untrusted plan change accepted")
+		}
+	}
+}
+
+func TestChangedVersionPolicyInvalidatesPreparedPlan(t *testing.T) {
+	r, initial, path, refs := fixture(t)
+	c := initial.Config
+	c.Tag = "v1.4.2"
+	c.UpdateAliases = true
+	c.MakeLatest = "auto"
+	refs["refs/tags/v2.0.0"] = initial.Source
+	p, err := r.CreatePlan(context.Background(), c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.MakeLatest || len(p.ExpectedAliases) != 2 {
+		t.Fatal("backport decisions not frozen")
+	}
+	if err = r.Prepare(context.Background(), p, path); err != nil {
+		t.Fatal(err)
+	}
+	refs["refs/tags/v1.5.0"] = initial.Source
+	if _, err = r.CheckPush(context.Background(), p); err == nil || !strings.Contains(err.Error(), "policy changed") {
+		t.Fatalf("stale alias policy accepted: %v", err)
+	}
+}
+
+func TestPublicationLatestDoesNotFollowAliasSwitch(t *testing.T) {
+	for _, latest := range []bool{false, true} {
+		g, p, _, _ := apiFixture(t, apiOptions{})
+		p.Config.UpdateAliases = !latest
+		p.MakeLatest = latest
+		if _, err := g.publish(context.Background(), p); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestRecoveryBundleRestoresPreparedGitObjects(t *testing.T) {
+	r, p, path, _ := fixture(t)
+	ctx := context.Background()
+	if err := r.Prepare(ctx, p, path); err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, r.Root, "update-ref", "refs/setup-go-faster/source-anchor", p.ExpectedSource)
+	bundle := filepath.Join(r.Root, "out", "recovery.bundle")
+	testGit(t, r.Root, "bundle", "create", bundle, "HEAD", "refs/setup-go-faster/source-anchor", "refs/tags/"+p.Config.Tag)
+	testGit(t, r.Root, "tag", "-d", p.Config.Tag)
+	testGit(t, r.Root, "fetch", bundle, "+refs/tags/*:refs/tags/*", "+refs/setup-go-faster/source-anchor:refs/setup-go-faster/source-anchor")
+	if done, err := r.CheckPush(ctx, p); err != nil || done {
+		t.Fatalf("restored plan: %t %v", done, err)
+	}
+	if got := testGit(t, r.Root, "rev-parse", "refs/tags/"+p.Config.Tag); got != p.TagObject {
+		t.Fatal("restoration changed annotated tag")
 	}
 }

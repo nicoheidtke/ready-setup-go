@@ -2,36 +2,60 @@
 
 ## Maintainer checklist
 
-All source development happens through pull requests into `main`. Include README, usage, and other documentation changes in the same PR as the behavior they describe. There are no source release branches to merge back.
+Merge normal source and documentation PRs into `main`. Include README, usage, and other documentation changes in the PR that changes the behavior. Generated distributions never merge back into source branches.
 
-1. Merge the reviewed PRs into `main`.
-2. Open **Actions → Release action → Run workflow**, select `main`, and enter an unused exact version such as `v1.0.0` or `v1.0.1`.
-3. Enable **publish**. Leave **promote** and **attest** enabled for a normal release. Notes are optional; leaving them empty generates notes from merged pull requests.
-4. Run the workflow and wait for success. Open the release linked in its summary and check the recorded distribution SHA and assets.
+1. Open **Actions → Release action → Run workflow** and leave **Use workflow from** set to `main`.
+2. Enter an unused exact version, such as `v1.0.0`. For an ordinary release, leave **source_branch** as `main` and **source_commit** empty.
+3. Enable **publish**. Keep **update_aliases** and **attest** enabled and **make_latest** set to `auto`. Notes are optional; empty notes are generated within the version's minor/major line.
+4. Run the workflow and wait for success. Its summary links the release and records the full action distribution SHA and exact action source.
 
-The workflow runs the existing contributor and six-native validation suite against its selected source commit, builds all six executables twice with Go 1.27.1, compares bytes, verifies archives and executable modes, and publishes only after its gates pass. It records the exact source revision and validation run in the release. A newer merge after dispatch belongs to the next release; publication refuses a conflicting source update rather than overwriting it.
-
-The equivalent normal dispatch is:
+The ordinary CLI dispatch is:
 
 ```text
 gh workflow run release.yml --ref main -f tag=v1.0.1 -F publish=true
 ```
 
-Without **publish**, the workflow prepares artifacts and a release plan for inspection. With an empty tag it only prepares distribution artifacts. Workflows remain manual and maintainer-controlled. Run the [hosted cache-service probes](DEVELOPMENT.md#hosted-lifecycle) when relevant; native fixtures do not establish every service policy or a performance speedup.
+The workflow resolves one source SHA before validation. Every unit/native check and package build uses that SHA, even if the branch advances later. It runs six-native validation, builds all six executables twice with Go 1.27.1, compares bytes, and verifies archives and executable modes. Requested attestations complete before publication. Candidate code runs without publication credentials; a separate publication job uses the current trusted publisher and a request binding the selected source, destinations, notes, and policies.
 
-## Versions and branches
+Without **publish**, the workflow prepares artifacts and a plan without writing remote Git refs or release data. An empty tag prepares distribution artifacts only. Hosted cache-service probes and performance measurements remain separate checks; see [hosted lifecycle](DEVELOPMENT.md#hosted-lifecycle).
 
-`main` contains source and documentation. `dist` contains generated distributions and is maintained only by the publisher; never merge it into `main`, edit it manually, or use it as the consumer pin. The first release creates it automatically. Full version tags such as `v1.0.0` point at exact packaged distribution commits, including executables, rather than source commits.
+## Maintenance branches and older commits
 
-After verifying publication, a normal release updates its major and minor convenience tags (`v1` and `v1.0`) and becomes GitHub's latest release. Documentation examples use `v1`, so patch releases need no follow-up README commit. Users who require fixed bytes can pin the full distribution SHA shown in the release notes. Source provenance, compiler, checksums, and validation evidence live with each release rather than in a changing source-documentation table.
+Keep **Use workflow from** on `main` in every case. **source_branch** selects action code, not automation. Use a source branch in this repository, such as `release/v1`; fork branches and PR refs are not accepted as source branches. Merge reviewed backports into the maintained branch before releasing. Individual fixes can be backported between source branches; `dist` is never merged into them.
 
-Use patch versions for fixes, minor versions for compatible features, and a new major for breaking inputs, defaults, output semantics, or cache contracts. Update the recommended major in the usage guide and consumer examples as part of a major-version PR. Dated private-era previews are no longer a publication path.
+For a v1 maintenance release after v2 exists:
 
-For an older maintenance version, disable **promote** (locally, `release plan --promote=false`). This publishes the exact version without changing latest or aliases. Promotion rejects a version older than an existing version, including an older major; explicitly choose maintenance publication in that case. Major/minor aliases move with exact leases only after release verification; version tags and existing published assets are never overwritten.
+```text
+gh workflow run release.yml --ref main -f source_branch=release/v1 -f tag=v1.4.2 -F publish=true
+```
+
+For an older snapshot, also enter its full lowercase 40-character **source_commit** SHA. It must be reachable from **source_branch**. Use the source revision recorded in a release, not its packaged distribution SHA or version tag:
+
+```text
+gh workflow run release.yml --ref main -f source_branch=release/v1 -f source_commit=FULL_SOURCE_COMMIT_SHA -f tag=v1.4.2 -F publish=true
+```
+
+No temporary source branch or branch rewind is needed to select an older commit. That snapshot must still provide compatible packaging/check commands and pass its own tests, documentation checks, and native fixtures. The publisher comes from current main even if the selected snapshot predates it. If an old snapshot fails validation or lacks required packaging files, create a backport branch with the necessary fixes rather than bypassing the gates.
+
+## Versions, aliases, and latest
+
+Full version tags such as `v1.4.2` identify exact packaged distributions. `dist` is generated output history; never edit it manually or use it as a consumer pin. Major/minor tags are convenience aliases. Documentation can keep using `v1` through compatible patch/minor releases; users needing fixed bytes use the full distribution SHA recorded with each release.
+
+**update_aliases** advances each eligible series independently. For example:
+
+| New release | Existing newer versions | Aliases advanced | Latest with `auto` |
+| --- | --- | --- | --- |
+| `v2.1.0` | `v2.0.0` | `v2`, `v2.1` | `v2.1.0` |
+| `v1.4.2` | `v1.4.1`, `v2.0.0` | `v1`, `v1.4` | Keeps `v2.0.0` |
+| `v1.4.2` | `v1.5.0` | `v1.4` only | Keeps `v1.5.0` |
+
+An alias never moves backwards to an older version in its series. Disable **update_aliases** to publish only the exact version. **make_latest** independently supports `auto`, `true`, and `false`: auto selects latest only when no higher stable version tag exists, true deliberately marks the release latest, and false leaves GitHub latest unchanged. Planning freezes these choices; changed version policy or alias refs require inspection before publication/resumption.
+
+Use patch versions for fixes, minor versions for compatible features, and a new major for breaking inputs/defaults/output semantics or cache contracts. Update the recommended major and examples in the major-version PR. Dated private-era previews remain unsupported.
 
 ## Local publication and recovery
 
-The hosted workflow is the normal path. Local publication uses the same publisher after completing [contributor checks](../CONTRIBUTING.md) and relevant native checks, building twice as below, and fetching `origin` so existing distribution objects are available. Write reviewed notes to `.cache/release/notes.md`, then run:
+The hosted workflow is the normal path. Local publication uses the same publisher after completing [contributor checks](../CONTRIBUTING.md) and relevant native checks, building twice as below, and fetching `origin` so existing distribution and source-anchor objects are available. To select a historical source locally, build the current release CLI to a file outside the source checkout before checking out the desired source; invoke that trusted executable for all release phases. Write reviewed notes to `.cache/release/notes.md`, then run:
 
 ```text
 go run ./cmd/release plan --tag v1.0.0 --notes .cache/release/notes.md
@@ -40,17 +64,27 @@ go run ./cmd/release publish
 go run ./cmd/release publish --execute
 ```
 
-Planning saves a reviewable ignored plan without changing refs or GitHub data. Preparation creates exact-byte Git objects and an annotated version tag without changing the source index. Publish defaults to a credential-free dry run. Only `--execute` pushes the source/distribution/version refs atomically with exact leases, uploads and verifies all nine asset sizes and server SHA-256 digests, publishes the release, fetches it again, and promotes aliases when requested. The candidate must already equal the remote source branch; publication cannot introduce unmerged source work. The source lease guards it against concurrent merges; distribution commits retain the previous distribution parent when present and the exact source as a parent. Source ancestry lets generated notes identify newly merged PRs across releases.
+For maintenance source, add `--source-ref refs/heads/release/v1` to `plan` and check out the branch tip or the desired ancestor first. Use `--update-aliases=false` for exact-version-only publication and `--make-latest=auto|true|false` independently. `release source --branch release/v1 --commit FULL_SOURCE_COMMIT_SHA` resolves/validates a source without remote writes. Historical checkout selection does not require a local branch to point at HEAD.
+
+The old `--promote` flag and unpublished plan schema are replaced by these independent controls. Recreate only unpublished plans. An already-pushed release must resume with its original matching tool and plan; do not overwrite its tag or rebuild that version.
+
+Planning saves a reviewable ignored plan without changing refs or GitHub data. Preparation creates exact-byte Git objects and an annotated version tag without changing the source index. Publish defaults to a credential-free dry run. Only `--execute` pushes the distribution/version refs atomically with exact leases, uploads and verifies all nine asset sizes and server SHA-256 digests, publishes the release, fetches it again, and advances eligible aliases when requested. The candidate must belong to the recorded remote source branch history. Source branches are never pushed or rewound; distribution commits retain the previous distribution parent when present and the exact source as a parent. Source ancestry lets generated notes identify newly merged PRs across releases.
 
 Authentication uses `GITHUB_TOKEN`, `GH_TOKEN`, or Git's credential helper for the API, and the configured Git/SSH transport for pushes. API credentials do not configure Git transport. URLs with embedded credentials and ambiguous push destinations are refused. The release command never dispatches workflows or changes repository settings.
 
 If publication fails or is interrupted, inspect the run and release before dispatching again. A failure can happen after successful publication. Do not delete tags/assets, overwrite a plan, or rebuild the same version to force a retry.
 
-The workflow uploads **release-recovery** before remote writes. It contains the plan, exact distribution/assets, notes, and a Git bundle retaining the source, distribution, and annotated tag objects. Download it within its 14-day retention period. Restore the bundle's refs and files into a clean checkout at the absolute paths recorded in the plan, using its recorded compiler. Reconstruct Git authentication, then resume:
+The workflow uploads **release-controller** and **release-preparation** before remote writes. Together they retain the trusted publisher executable/request, notes, plan, exact distribution/assets, and a Git bundle containing the selected source anchor, distribution, and annotated version tag. Download it within its 14-day retention period. Restore the selected source checkout and preparation files at the absolute paths recorded in the plan, using its recorded compiler. Restore the trusted controller artifact separately, outside candidate files. Artifact transport strips executable bits, so restore the controller and four known Unix distribution binaries to executable mode. Import the prepared Git objects without running preparation again:
 
 ```text
-go run ./cmd/release publish --plan .cache/package/plan.json
-go run ./cmd/release publish --execute --plan .cache/package/plan.json
+git fetch .cache/package/recovery.bundle '+refs/tags/*:refs/tags/*' '+refs/setup-go-faster/source-anchor:refs/setup-go-faster/source-anchor'
+```
+
+Reconstruct Git authentication and use the saved controller, not the historical source's release command:
+
+```text
+PATH_TO_CONTROLLER/release publish --plan .cache/package/plan.json --request PATH_TO_CONTROLLER/request.json
+PATH_TO_CONTROLLER/release publish --execute --plan .cache/package/plan.json --request PATH_TO_CONTROLLER/request.json
 ```
 
 For a local publication, resume with the original local plan path instead. Matching already-pushed refs, draft uploads, published data, and promoted aliases are reused. Changed refs, notes, assets, classification, or duplicate releases require inspection. Ambiguous API writes are not automatically retried. If only alias promotion failed, the same command verifies the published release before finishing promotion.
@@ -91,7 +125,7 @@ The normal release plan/prepare/publish commands work for either distribution. P
 
 ## Hosted provenance and immutability
 
-The default-enabled optional **attest** job rechecks the preparation artifacts and uses pinned `actions/attest` to generate provenance for all nine assets. Only that job requests `id-token: write` and `attestations: write`. The package job needs `contents: write` for opt-in publication; checkout does not persist credentials, and the API token is supplied only to release preparation/publication steps. The reusable validation jobs use `contents: read`.
+The default-enabled optional **attest** job rechecks the preparation artifacts and uses pinned `actions/attest` to generate provenance for all nine assets. Only that job requests `id-token: write` and `attestations: write`. The trusted source/notes job needs `contents: write` because [GitHub requires it for generated notes](https://docs.github.com/en/rest/releases/releases#generate-release-notes-content-for-a-release); it never executes candidate code. Candidate validation and packaging use `contents: read`. A separate publication job has `contents: write`, uses an independently downloaded trusted publisher/request, and exposes its token only to publication. Checkout does not persist credentials.
 
 After a successful attested run, consumers can verify an asset:
 
@@ -99,7 +133,7 @@ After a successful attested run, consumers can verify an asset:
 gh attestation verify bundled.zip -R nicoheidtke/setup-go-faster
 ```
 
-Check source revision, signer workflow, and invocation against the release. Attestations bind bytes to a workflow identity; they do not establish correctness or performance. Local builds do not have GitHub-hosted build attestations. See [artifact attestation verification](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations).
+Check signer workflow and invocation against the release. Hosted provenance identifies the automation revision on main; the selected action source can differ. Its exact revision and source-content digest are recorded in `SOURCE_REVISION` and `SOURCE_PROVENANCE.json` inside the verified distribution, and the release notes distinguish the automation revision from that source. Attestations bind bytes to a workflow identity; they do not establish correctness or performance. Local builds do not have GitHub-hosted build attestations. See [artifact attestation verification](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations).
 
 A commit SHA identifies fixed content; it does not lock release tags/assets. Check a release's immutable status before claiming it. The publisher prepares a draft, verifies all assets, then publishes, which is compatible with immutable releases. Repository immutability settings remain a separate maintainer decision; mutable major/minor aliases stay separate from full release tags. See [immutable releases](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases).
 

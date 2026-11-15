@@ -44,7 +44,7 @@ Local checksum/provenance verification SHALL establish artifact consistency rath
 
 ### Requirement: Stable release versions and promotion
 
-Planning SHALL accept exact stable vMAJOR.MINOR.PATCH versions without leading zeroes and reject dated previews, aliases, unsupported suffixes, and reused tags. Normal publication SHALL promote latest and the major/minor aliases only after verifying release assets. Maintenance publication SHALL leave latest and aliases unchanged. Promotion SHALL refuse a version older than an existing version.
+Planning SHALL accept exact stable vMAJOR.MINOR.PATCH versions without leading zeroes and reject dated previews, aliases, unsupported suffixes, and reused tags. Normal publication SHALL apply the independently selected latest and eligible major/minor alias policies after verifying release assets. Maintenance publication SHALL support advancing an older version line without replacing GitHub latest or moving aliases backwards.
 
 #### Scenario: Normal release
 - **WHEN** v1.2.3 is published with promotion
@@ -55,7 +55,7 @@ Planning SHALL accept exact stable vMAJOR.MINOR.PATCH versions without leading z
 - **THEN** promotion refuses replacement and the same plan remains available for inspection
 
 #### Scenario: Maintenance release
-- **WHEN** a maintainer disables promotion for an older version
+- **WHEN** a maintainer disables latest and alias updates for an older version
 - **THEN** the exact release is published without moving aliases or latest
 
 ### Requirement: First distribution publication
@@ -68,7 +68,7 @@ Planning SHALL accept an absent distribution branch without creating it. Executi
 
 ### Requirement: Manual hosted release workflow
 
-The manual release workflow SHALL run reusable six-platform validation and reproducible packaging before optional publication. Publication SHALL require main, a version, and maintainer authorization. Notes SHALL be generated when omitted. Preparation alone SHALL remain the default. Release runs SHALL serialize without cancellation and retain recovery inputs before remote writes.
+The manual release workflow SHALL run reusable six-platform validation and reproducible packaging before optional publication. Publication SHALL require reviewed automation from main, a selected immutable source, a version, and maintainer authorization. Notes SHALL be generated when omitted. Preparation alone SHALL remain the default. Release runs SHALL serialize without cancellation and retain recovery inputs before remote writes.
 
 #### Scenario: Validation fails
 - **WHEN** a native validation or packaging gate fails
@@ -80,7 +80,7 @@ The manual release workflow SHALL run reusable six-platform validation and repro
 
 ### Requirement: Main-only source and release-owned provenance
 
-Source and documentation changes SHALL merge into main before release. Generated distribution history SHALL remain separate and never require merging into main. Consumer examples SHALL use the usage guide's recommended major, a matching exact version, or a full distribution SHA. Exact source/distribution provenance and validation evidence SHALL be recorded with each release.
+Source and documentation changes SHALL merge into main or a maintained source branch before release. Generated distribution history SHALL remain separate and never require merging into main. Consumer examples SHALL use the usage guide's recommended major, a matching exact version, or a full distribution SHA. Exact source/distribution provenance and validation evidence SHALL be recorded with each release.
 
 #### Scenario: Patch release
 - **WHEN** a compatible patch release is published

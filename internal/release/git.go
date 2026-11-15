@@ -159,9 +159,6 @@ func (r *Runner) CheckPush(ctx context.Context, p *Plan) (bool, error) {
 	if err := r.Validate(ctx, p); err != nil {
 		return false, err
 	}
-	if _, err := r.git(ctx, nil, nil, "merge-base", "--is-ancestor", p.ExpectedSource, p.Source); err != nil {
-		return false, fmt.Errorf("planned source update must be fast-forward")
-	}
 	if err := r.verifyCommit(ctx, p); err != nil {
 		return false, err
 	}
@@ -172,23 +169,23 @@ func (r *Runner) CheckPush(ctx context.Context, p *Plan) (bool, error) {
 	if err != nil || strings.TrimSpace(string(local)) != p.TagObject {
 		return false, fmt.Errorf("local release tag changed")
 	}
-	localSource, err := r.git(ctx, nil, nil, "rev-parse", p.Config.SourceRef)
-	if err != nil || strings.TrimSpace(string(localSource)) != p.Source {
-		return false, fmt.Errorf("local source branch moved")
-	}
 	refs, err := r.refs(ctx, p.Config)
 	if err != nil {
 		return false, err
+	}
+	eligible, latest := publicationPolicy(p.Config, refs)
+	if latest != p.MakeLatest || strings.Join(sortedKeys(eligible), ",") != strings.Join(sortedKeys(p.ExpectedAliases), ",") {
+		return false, fmt.Errorf("release policy changed after planning; inspect before resuming")
 	}
 	for ref, expected := range p.ExpectedAliases {
 		if refs[ref] != expected && refs[ref] != p.Distribution {
 			return false, fmt.Errorf("release alias changed; inspect before resuming")
 		}
 	}
-	if refs[p.Config.SourceRef] == p.Source && refs[p.Config.DistributionRef] == p.Distribution && refs["refs/tags/"+p.Config.Tag] == p.TagObject {
+	if refs[p.Config.DistributionRef] == p.Distribution && refs["refs/tags/"+p.Config.Tag] == p.TagObject {
 		return true, nil
 	}
-	if refs[p.Config.SourceRef] != p.ExpectedSource || refs[p.Config.DistributionRef] != p.ExpectedDistribution || refs["refs/tags/"+p.Config.Tag] != "" {
+	if refs[p.Config.DistributionRef] != p.ExpectedDistribution || refs["refs/tags/"+p.Config.Tag] != "" {
 		return false, fmt.Errorf("remote refs changed; do not force or re-plan over a published release")
 	}
 	return false, nil
@@ -198,16 +195,15 @@ func (r *Runner) pushPlan(ctx context.Context, p *Plan) error {
 	if r.push != nil {
 		return r.push(ctx, p)
 	}
-	// Explicit leases close the read/push race. Atomic push prevents a partial
-	// source/distribution/tag update; leases never authorize a non-fast-forward source.
-	args := []string{"push", "--atomic", "--force-with-lease=" + p.Config.SourceRef + ":" + p.ExpectedSource, "--force-with-lease=" + p.Config.DistributionRef + ":" + p.ExpectedDistribution, "--force-with-lease=refs/tags/" + p.Config.Tag + ":", p.Config.Remote, p.Source + ":" + p.Config.SourceRef, p.Distribution + ":" + p.Config.DistributionRef, "refs/tags/" + p.Config.Tag + ":refs/tags/" + p.Config.Tag}
+	// Only generated output refs are pushed; source branches are read-only.
+	args := []string{"push", "--atomic", "--force-with-lease=" + p.Config.DistributionRef + ":" + p.ExpectedDistribution, "--force-with-lease=refs/tags/" + p.Config.Tag + ":", p.Config.Remote, p.Distribution + ":" + p.Config.DistributionRef, "refs/tags/" + p.Config.Tag + ":refs/tags/" + p.Config.Tag}
 	_, err := r.git(ctx, nil, nil, args...)
 	return err
 }
 
 // Aliases move only after the release and every remote asset have been verified.
 func (r *Runner) promoteAliases(ctx context.Context, p *Plan) error {
-	if !p.Config.Promote {
+	if len(p.ExpectedAliases) == 0 {
 		return nil
 	}
 	refs, err := r.refs(ctx, p.Config)
@@ -216,7 +212,7 @@ func (r *Runner) promoteAliases(ctx context.Context, p *Plan) error {
 	}
 	args := []string{"push", "--atomic"}
 	var updates []string
-	for _, ref := range releaseAliases(p.Config.Tag) {
+	for _, ref := range sortedKeys(p.ExpectedAliases) {
 		if refs[ref] == p.Distribution {
 			continue
 		}
@@ -237,7 +233,7 @@ func (r *Runner) promoteAliases(ctx context.Context, p *Plan) error {
 	if err != nil {
 		return err
 	}
-	for _, ref := range releaseAliases(p.Config.Tag) {
+	for _, ref := range sortedKeys(p.ExpectedAliases) {
 		if refs[ref] != p.Distribution {
 			return fmt.Errorf("alias update not verified: %s", ref)
 		}

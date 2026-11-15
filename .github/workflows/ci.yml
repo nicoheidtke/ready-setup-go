@@ -2,6 +2,12 @@ name: Installer validation
 on:
   workflow_dispatch:
   workflow_call:
+    inputs:
+      source-sha:
+        description: Frozen action source revision selected by release orchestration
+        type: string
+        required: false
+        default: ''
 permissions:
   contents: read
 concurrency:
@@ -20,6 +26,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.source-sha || github.sha }}
+          persist-credentials: false
       - uses: actions/setup-go@v7.0.0
         with:
           go-version: ${{ matrix.go }}
@@ -76,6 +85,9 @@ jobs:
       GOTELEMETRY: 'off'
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.source-sha || github.sha }}
+          persist-credentials: false
       - uses: actions/setup-go@v7.0.0
         with:
           go-version: '1.27.1'

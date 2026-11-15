@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -16,11 +17,11 @@ import (
 
 func run() error {
 	if len(os.Args) == 2 && (os.Args[1] == "--help" || os.Args[1] == "-h" || os.Args[1] == "help") {
-		fmt.Println("Usage: release plan|prepare|publish [options]\n\nplan validates two reproducible builds and writes an ignored JSON plan.\nprepare creates only the local exact-byte distribution commit and tag.\npublish is dry-run by default; --execute atomically pushes and publishes.\n\nUse release <phase> --help for options.")
+		fmt.Println("Usage: release source|plan|prepare|publish [options]\n\nsource resolves a branch and optional full SHA without remote writes.\nplan validates two reproducible builds and writes an ignored JSON plan.\nprepare creates only the local exact-byte distribution commit and tag.\npublish is dry-run by default; --execute atomically pushes and publishes.\n\nUse release <phase> --help for options.")
 		return nil
 	}
 	if len(os.Args) < 2 {
-		return fmt.Errorf("usage: release plan|prepare|publish (publish is dry-run unless --execute)")
+		return fmt.Errorf("usage: release source|plan|prepare|publish (publish is dry-run unless --execute)")
 	}
 	fs := flag.NewFlagSet(os.Args[1], flag.ContinueOnError)
 	root := fs.String("root", ".", "source checkout root")
@@ -36,7 +37,12 @@ func run() error {
 	fs.StringVar(&c.Assets, "assets", ".cache/release/artifacts", "verified nine assets")
 	fs.StringVar(&c.ReproDist, "repro-dist", ".cache/release/dist-repro", "second build distribution")
 	fs.StringVar(&c.ReproAssets, "repro-assets", ".cache/release/artifacts-repro", "second build assets")
-	fs.BoolVar(&c.Promote, "promote", true, "mark latest and update major/minor aliases after verification; false for maintenance releases")
+	fs.BoolVar(&c.UpdateAliases, "update-aliases", true, "advance eligible major/minor aliases without downgrades")
+	fs.StringVar(&c.MakeLatest, "make-latest", "auto", "GitHub latest policy: auto, true, or false")
+	fs.StringVar(&c.SourceAnchor, "source-anchor", "", "optional frozen branch anchor SHA from source resolution")
+	requestPath := fs.String("request", "", "trusted request JSON to bind workflow publication inputs")
+	sourceBranch := fs.String("branch", "main", "repository branch containing the selected source (source phase)")
+	sourceCommit := fs.String("commit", "", "optional full source commit SHA (source phase)")
 	notes := fs.String("notes", "", "release notes Markdown file (plan only)")
 	if err := fs.Parse(os.Args[2:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -59,6 +65,15 @@ func run() error {
 	}
 	r := release.New(absRoot)
 	switch os.Args[1] {
+	case "source":
+		if *execute {
+			return fmt.Errorf("source resolution performs no remote writes")
+		}
+		source, err := r.ResolveSource(ctx, c.Repository, c.Remote, *sourceBranch, *sourceCommit, c.Tag)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(os.Stdout).Encode(source)
 	case "plan":
 		if *execute {
 			return fmt.Errorf("--execute applies only to publish")
@@ -83,6 +98,11 @@ func run() error {
 		p, err := release.Load(absPlan)
 		if err != nil {
 			return err
+		}
+		if *requestPath != "" {
+			if err = release.CheckRequest(*requestPath, p); err != nil {
+				return err
+			}
 		}
 		if os.Args[1] == "prepare" {
 			if *execute {
