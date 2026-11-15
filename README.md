@@ -1,20 +1,14 @@
 # setup-go-faster
 
-Set up Go in GitHub Actions, with more control over how your module and build caches get reused and refreshed.
+Set up Go in GitHub Actions and carry more of each build's work into the next run.
 
-This is still a personal experiment. I started it because I got annoyed by how inefficient the standard `actions/setup-go` action felt and wanted to see if I could do better.
+Your code changes more often than your dependencies. `setup-go-faster` can save recent compiled results even when your dependencies stay the same, so later runs can reuse work from earlier builds and tests. It also keeps different jobs' caches separate and avoids uploading unchanged dependencies again.
 
-Feel free to use it and tell me how it goes. Bug reports, ideas, and general feedback are welcome in [issues](https://github.com/nicoheidtke/setup-go-faster/issues). I haven't tested every target platform and workflow scenario yet; the [current validation status](docs/DEVELOPMENT.md#support-and-validation-status) explains what's covered and what still needs checking.
-
-It reuses a matching Go installation if one is already there. Otherwise, it downloads an official release and verifies it before installing it. The action itself runs prebuilt Go executables, so there's nothing to compile and no npm packages to install in your workflow.
-
-The cache behavior is the main difference. With `cache: restore-save`, a job can restore a build cache and still save a fresh snapshot when it's done. You don't have to wait for a dependency change to refresh it. Module caches are handled separately by default, and unchanged module contents aren't uploaded again.
-
-It targets **Go 1.26+** on Linux, macOS and Windows, on both amd64 and arm64. **Caching is off by default.** Turn it on if you want it.
+This is still a personal experiment, targeting **Go 1.26+** on Linux, macOS and Windows, amd64 and arm64. I haven't tested every scenario yet; the [validation status](docs/DEVELOPMENT.md#support-and-validation-status) explains what's covered. If you try it, I'd love to hear how it goes in [issues](https://github.com/nicoheidtke/setup-go-faster/issues).
 
 ## Quick start
 
-Use `v1` for compatible updates. For a fixed revision, pin the full action distribution SHA recorded in the [release notes](https://github.com/nicoheidtke/setup-go-faster/releases).
+Caching is **off by default**. Here's how to turn it on:
 
 ```yaml
 permissions:
@@ -31,25 +25,44 @@ jobs:
       - run: go test ./...
 ```
 
-You can read the version from `go.mod` or `go.work`, or set it directly with something like `go-version: '1.26.x'` or an exact patch. A minor selector reuses an installed matching patch if it can. Set `check-latest: true` if you want the latest available patch instead.
+Use `go.mod`, `go.work`, or `go-version: '1.26.x'`. For a fixed revision, pin the distribution SHA from the [release notes](https://github.com/nicoheidtke/setup-go-faster/releases).
 
-Use `cache: restore` if you only want to read caches without uploading anything at the end. For matrix jobs, put the dimensions that differ between jobs in `cache-scope` so their caches stay separate. If you want to save build caches less often while still saving changed modules, there's [`cache-build-save`](docs/USAGE.md#choosing-a-save-policy) for that.
+## How is it different from actions/setup-go?
 
-The default distribution bundles everything the action needs. There's also a lightweight option that downloads just the executable for the runner's platform and verifies it against the pinned metadata. The [usage guide](docs/USAGE.md) covers the inputs and examples, including [how the action is distributed](docs/USAGE.md#action-acquisition).
+Both actions install Go and can save dependencies and compiled results for later runs. Where this one takes a different approach is how that saved work gets refreshed and shared.
 
-## Compared with actions/setup-go
+| What matters | `actions/setup-go` built-in caching | `setup-go-faster` |
+| --- | --- | --- |
+| Keeping recent build results | Skips saving after restoring an exact cache match. | Can save recent build results even when dependencies haven't changed. |
+| Saving dependencies | Downloaded dependencies and compiled results are saved together. | Saves them separately by default; unchanged dependencies aren't uploaded again. |
+| Different jobs | Matching Go, runner and dependency settings share a cache. | Build and test jobs retain their own useful work in separate caches. |
+| Choosing when to upload | Caching is on by default, with automatic saves on cache misses. | Off by default; choose restore-only, restore-and-save, or less frequent build saves. |
+| Multiple Go modules | Configure dependency paths for modules outside the repository root. | Finds module and workspace dependency files throughout the repository by default. |
 
-GitHub's official action supports more Go versions and version formats. This one focuses on fresh caches, keeping job caches separate, and letting you decide what gets restored and saved.
+If you use a matrix, set `cache-scope` to keep variants such as race and ordinary tests separate. If you only want to restore caches without uploading anything, use `cache: restore`. The [usage guide](docs/USAGE.md) has more examples.
 
-That comes with tradeoffs. Fresh snapshots mean more uploads, and separate job caches can use more storage. I haven't established a controlled end-to-end speedup yet, so whether this saves time in your workflow still needs measuring. Include setup, cache restore, the actual work, and the final cache upload when you compare them.
+There's a cost to this: saving fresh results takes upload time, and keeping jobs separate can use more storage. The official action also supports older Go versions, more version formats and download mirrors. You'll start with cold caches when switching, too. The [full comparison](docs/COMPARISON.md) covers the details.
 
-The [comparison](docs/COMPARISON.md) goes through the differences. If you want to measure it yourself, the [benchmark guide](docs/BENCHMARKS.md) explains how.
+## Why implement it differently?
 
-### An anecdote from my day job
+Most of the action is written in Go. Partly because I just don't like the JavaScript ecosystem. :-) But there's a practical side, too: Go lets us spread compression across CPU cores and coordinate downloads, uploads and file operations in one compiled program. A small Node launcher connects it to GitHub Actions and runs the save step when your job finishes.
 
-I work on [exasol/exasol-personal](https://github.com/exasol/exasol-personal) in my day job. To see whether this helped a real workflow, I [forked it](https://github.com/nicoheidtke/exasol-personal) and changed its CI to use `setup-go-faster` instead of `actions/setup-go`. With warm caches and the cache setup adjusted for the jobs, the build and test jobs finished noticeably sooner.
+Here's where we're trying to do less waiting and less repeated work:
 
-Here are the observed workflow and complete job durations, including setup and post steps, from two upstream runs and the fork run:
+- **Do more at once.** Workers download and upload different parts of a large cache at the same time, while gzip and zstd compression can use multiple CPU cores. Cache downloads can also start while Go installs.
+- **Touch the filesystem less.** Where possible, restored files are linked into place rather than copied. On Windows, once a restored directory has been checked, we can move it into place in one go if the destination doesn't exist. Files that still need individual handling can be put in place concurrently.
+- **Reuse memory.** Transfers stream through limited buffers, and compression workers reuse their memory. Small archive writes are grouped into larger ones. That keeps queued data and memory allocations down, though archives still need temporary disk space.
+- **Skip work we've already done.** Unchanged dependencies don't need packing or uploading again. Optional chunked storage lets us reuse unchanged pieces of a cache, sometimes skipping their compression too.
+
+Compression support comes bundled, so it doesn't depend on which archive tools your runner has installed. It all uses GitHub's existing cache service; there's no extra service or credentials to set up.
+
+If the Go version you need is already installed, we reuse it. Otherwise, we download it from Go and verify it before installing. With either action, you don't need to compile the installer or run npm in your workflow.
+
+Go makes these choices practical, but using Go doesn't automatically make an action faster. What matters is how long your **whole job** takes, including cache uploads. If you're curious, the [architecture](docs/ARCHITECTURE.md) explains the internals and the [measurement guide](docs/BENCHMARKS.md) explains how to compare them.
+
+## An anecdote from my day job
+
+I work on [exasol/exasol-personal](https://github.com/exasol/exasol-personal) in my day job. To try this out, I [forked it](https://github.com/nicoheidtke/exasol-personal), switched actions and adjusted the cache and warmup steps. With warm caches, several jobs finished noticeably sooner. These times include setup and post steps:
 
 | Workflow / job | [Upstream run 43348902097](https://github.com/exasol/exasol-personal/actions/runs/43348902097) | [Upstream run 43442456182](https://github.com/exasol/exasol-personal/actions/runs/43442456182) | [Fork run 43666086120](https://github.com/nicoheidtke/exasol-personal/actions/runs/43666086120) |
 | --- | --- | --- | --- |
@@ -63,19 +76,22 @@ Here are the observed workflow and complete job durations, including setup and p
 | Python lint | 29s | 27s | 28s |
 | SonarQube | 1m 29s | 1m 22s | Skipped |
 
-Here are the workflow graphs for the upstream PR run and the warm-cache fork run:
+The upstream used `actions/setup-go` v6.5.0; the fork used `setup-go-faster` v1.0.0 with separate dependency/build caches, zstd compression and matrix scopes. Build and unit-test logs confirmed cache restores; launcher tests had Go caching disabled in the fork.
 
-**Upstream with `actions/setup-go` — 11m 00s** ([run](https://github.com/exasol/exasol-personal/actions/runs/43442456182)):
+That's encouraging, but it's **not a controlled comparison**. The runs used different revisions and triggers, I changed surrounding steps, and cache histories and runner load weren't controlled. SonarQube was skipped in the fork, and Go lint was slower, too. So I can't say how much of the improvement came from the action itself, but it's why I'm pursuing this.
+
+<details>
+<summary>Workflow graphs: upstream and warm-cache fork</summary>
+
+**Upstream — 11m 00s** ([run](https://github.com/exasol/exasol-personal/actions/runs/43442456182)):
 
 ![Upstream CI workflow graph: 11 minutes total, with successful lint, build, test, and SonarQube jobs.](docs/images/exasol-personal-upstream-ci.png)
 
-**Fork with `setup-go-faster` — 5m 51s** ([run](https://github.com/nicoheidtke/exasol-personal/actions/runs/43666086120)):
+**Fork — 5m 51s** ([run](https://github.com/nicoheidtke/exasol-personal/actions/runs/43666086120)):
 
 ![Fork CI workflow graph: 5 minutes 51 seconds total, with successful lint, build, and test jobs; SonarQube is skipped.](docs/images/exasol-personal-fork-ci.png)
 
-The upstream runs used `actions/setup-go` v6.5.0; the fork used `setup-go-faster` v1.0.0 with separate module/build caches, zstd compression, and matrix cache scopes. Its build and unit-test logs confirm that both Go cache snapshots were restored. I also changed the surrounding cache and warmup steps; launcher tests had Go caching disabled in the fork.
-
-This is anecdotal evidence, and the comparison isn't entirely fair: these were different revisions and triggers (upstream push/PR versus a manual fork run), SonarQube was skipped in the fork, and runner load and cache histories weren't controlled. Go lint was slower in the fork, too. The workflow totals therefore don't establish a speedup attributable to this action alone. Still, seeing the Ubuntu build drop to 39 seconds and unit tests to just over a minute is why I'm pursuing this: keeping useful build caches warm can make a very visible difference in everyday CI. A controlled comparison still needs the [benchmark methodology](docs/BENCHMARKS.md).
+</details>
 
 ## More details
 
