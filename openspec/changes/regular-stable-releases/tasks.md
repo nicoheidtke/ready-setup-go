@@ -10,7 +10,7 @@
 
 ## 3. Integration and first release
 
-- [ ] 3.0 Fix hosted fixture provisioning to use actual runner directories and restore read-only test permissions during cleanup; verify the six-native workflow without changing runtime behavior.
+- [ ] 3.0 Fix hosted fixture provisioning to use actual runner directories and restore read-only test permissions during cleanup and canonicalize macOS temporary fixture paths; verify the six-native workflow without changing runtime behavior.
 
-- [ ] 3.1 Run canonical Node 24 contributor/workflow checks and strict OpenSpec validation; prepare a reviewable PR and distinguish local checks from hosted/native/service/performance evidence.
+- [x] 3.1 Run canonical Node 24 contributor/workflow checks and strict OpenSpec validation; prepare a reviewable PR and distinguish local checks from hosted/native/service/performance evidence.
 - [ ] 3.2 After the readiness PR merges, run the authorized v1.0.0 release workflow, verify all six native gates, reproducibility, assets, version/alias refs, and published consumer execution.

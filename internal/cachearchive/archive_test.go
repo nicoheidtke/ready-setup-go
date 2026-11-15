@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-func tempDir(t *testing.T) string {
+func tempDir(t testing.TB) string {
 	t.Helper()
 	dir, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
