@@ -16,7 +16,7 @@ import (
 )
 
 func TestPackContentIdentity(t *testing.T) {
-	dir := t.TempDir()
+	dir := tempDir(t)
 	if err := os.Mkdir(filepath.Join(dir, "empty"), 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestPackContentIdentity(t *testing.T) {
 			if !bytes.Equal(plain.Bytes(), identified.Bytes()) {
 				t.Fatal("content hashing changed archive bytes")
 			}
-			restored, err := Restore(context.Background(), bytes.NewReader(identified.Bytes()), []Root{{Name: "modules", Path: filepath.Join(t.TempDir(), "restore")}}, opts)
+			restored, err := Restore(context.Background(), bytes.NewReader(identified.Bytes()), []Root{{Name: "modules", Path: filepath.Join(tempDir(t), "restore")}}, opts)
 			if err != nil || restored.ContentDigest != packed.ContentDigest {
 				t.Fatalf("restore identity mismatch: %+v %v", restored, err)
 			}
@@ -107,7 +107,7 @@ func measureModulePolicy(ctx context.Context, roots []Root, baseline, codec, pol
 
 func modulePolicyCorpus(t testing.TB, files, size int) []Root {
 	t.Helper()
-	dir := t.TempDir()
+	dir := tempDir(t)
 	random := rand.New(rand.NewPCG(1, 2))
 	payload := make([]byte, size)
 	stamp := time.Unix(1700000000, 0)
@@ -154,7 +154,7 @@ func TestModulePolicyDecisions(t *testing.T) {
 		baseline := modulePolicyBaseline(t, roots, changed)
 		var previous modulePolicySample
 		for _, policy := range []string{"check-first", "pack-and-hash"} {
-			sample, err := measureModulePolicy(context.Background(), roots, baseline, "gzip", policy, t.TempDir())
+			sample, err := measureModulePolicy(context.Background(), roots, baseline, "gzip", policy, tempDir(t))
 			if err != nil || sample.skipped == changed {
 				t.Fatalf("changed=%v policy=%s sample=%+v err=%v", changed, policy, sample, err)
 			}
@@ -187,7 +187,7 @@ func TestMeasureModuleSavePolicies(t *testing.T) {
 			baseline := modulePolicyBaseline(t, roots, changed)
 			for _, codec := range []string{"none", "gzip", "zstd"} {
 				var deltas []float64
-				temporary := t.TempDir()
+				temporary := tempDir(t)
 				for pair := range 20 {
 					order := []string{"check-first", "pack-and-hash"}
 					if pair%2 == 1 {

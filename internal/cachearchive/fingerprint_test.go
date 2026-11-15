@@ -14,7 +14,7 @@ func TestFingerprintMatchesArchiveAndIgnoresMtime(t *testing.T) {
 	for _, compression := range []string{"none", "gzip"} {
 		t.Run(compression, func(t *testing.T) {
 			ctx := context.Background()
-			src := t.TempDir()
+			src := tempDir(t)
 			name := filepath.Join(src, "module")
 			if err := os.WriteFile(name, []byte("original"), 0644); err != nil {
 				t.Fatal(err)
@@ -28,7 +28,7 @@ func TestFingerprintMatchesArchiveAndIgnoresMtime(t *testing.T) {
 			if _, err := Pack(ctx, &archive, rs, Options{Compression: compression}); err != nil {
 				t.Fatal(err)
 			}
-			restored, err := Restore(ctx, bytes.NewReader(archive.Bytes()), []Root{{Name: "modules", Path: filepath.Join(t.TempDir(), "restored")}}, Options{Compression: compression, ContentIdentity: true})
+			restored, err := Restore(ctx, bytes.NewReader(archive.Bytes()), []Root{{Name: "modules", Path: filepath.Join(tempDir(t), "restored")}}, Options{Compression: compression, ContentIdentity: true})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -59,7 +59,7 @@ func TestFingerprintMatchesArchiveAndIgnoresMtime(t *testing.T) {
 
 func TestFingerprintTracksPathsModesAndOrder(t *testing.T) {
 	ctx := context.Background()
-	dir := t.TempDir()
+	dir := tempDir(t)
 	name := filepath.Join(dir, "file")
 	if err := os.WriteFile(name, []byte("same bytes"), 0644); err != nil {
 		t.Fatal(err)
@@ -101,7 +101,7 @@ func TestFingerprintTracksPathsModesAndOrder(t *testing.T) {
 }
 
 func TestFingerprintLimitsCancellationAndMissingRoots(t *testing.T) {
-	dir := t.TempDir()
+	dir := tempDir(t)
 	if err := os.WriteFile(filepath.Join(dir, "file"), []byte("payload"), 0644); err != nil {
 		t.Fatal(err)
 	}
