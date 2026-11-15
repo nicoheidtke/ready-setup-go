@@ -10,4 +10,4 @@
 
 ## 3. Verification and PR
 
-- [ ] 3.1 Run canonical contributor/workflow checks on Node 24, strict OpenSpec validation, and relevant packaging/source-selection integration; create a PR with exact validation evidence and state hosted/publication/performance limits.
+- [x] 3.1 Run canonical contributor/workflow checks on Node 24, strict OpenSpec validation, and relevant packaging/source-selection integration; create a PR with exact validation evidence and state hosted/publication/performance limits.
