@@ -175,8 +175,12 @@ jobs:
           # RUNNER_* variables in workflow env. Keep the build compiler active.
           RUNNER_TOOL_CACHE='' GITHUB_ENV='' GITHUB_PATH='' GITHUB_OUTPUT='' GITHUB_STEP_SUMMARY='' \
             "$native" setup --go-version=1.26.0 --cache=off --summary=false
+      - name: Compile packaged lifecycle tests once
+        shell: bash
+        run: go test -c -o "$RUNNER_TEMP/cache-lifecycle.test.exe" ./internal/cache
       - name: Native archive and chunked main/post fixtures
         shell: bash
+        working-directory: internal/cache
         env:
           SETUP_GO_FASTER_TEST_DIST: ${{ github.workspace }}/dist
           SETUP_GO_FASTER_TEST_RUNNER_TEMP: ${{ runner.temp }}
@@ -186,12 +190,13 @@ jobs:
         run: |
           for compression in gzip zstd none; do
             for storage in archive chunked; do
-              SETUP_GO_FASTER_TEST_COMPRESSION="$compression" SETUP_GO_FASTER_TEST_STORAGE="$storage" go test ./internal/cache -run '^TestPackagedLifecycle$' -count=1 -v
+              SETUP_GO_FASTER_TEST_COMPRESSION="$compression" SETUP_GO_FASTER_TEST_STORAGE="$storage" "$RUNNER_TEMP/cache-lifecycle.test.exe" -test.run '^TestPackagedLifecycle$' -test.count=1 -test.v -test.timeout=10m
             done
           done
-          go test ./internal/cache -run '^TestPackagedCancellation$' -count=1 -v
+          "$RUNNER_TEMP/cache-lifecycle.test.exe" -test.run '^TestPackagedCancellation$' -test.count=1 -test.v -test.timeout=10m
       - name: Native lightweight main/post bootstrap and reuse
         shell: bash
+        working-directory: internal/cache
         env:
           SETUP_GO_FASTER_TEST_DIST: ${{ github.workspace }}/.cache/native-light/dist
           SETUP_GO_FASTER_TEST_NATIVE_ASSETS: ${{ github.workspace }}/.cache/native-light/assets
@@ -199,5 +204,5 @@ jobs:
           SETUP_GO_FASTER_TEST_VERSION: '1.26.0'
           SETUP_GO_FASTER_TEST_NODE: ${{ steps.lifecycle-node.outputs.path }}
         run: |
-          SETUP_GO_FASTER_TEST_COMPRESSION=zstd SETUP_GO_FASTER_TEST_STORAGE=archive go test ./internal/cache -run '^TestPackagedLifecycle$' -count=1 -v
-          SETUP_GO_FASTER_TEST_COMPRESSION=gzip SETUP_GO_FASTER_TEST_STORAGE=chunked go test ./internal/cache -run '^TestPackagedLifecycle$' -count=1 -v
+          SETUP_GO_FASTER_TEST_COMPRESSION=zstd SETUP_GO_FASTER_TEST_STORAGE=archive "$RUNNER_TEMP/cache-lifecycle.test.exe" -test.run '^TestPackagedLifecycle$' -test.count=1 -test.v -test.timeout=10m
+          SETUP_GO_FASTER_TEST_COMPRESSION=gzip SETUP_GO_FASTER_TEST_STORAGE=chunked "$RUNNER_TEMP/cache-lifecycle.test.exe" -test.run '^TestPackagedLifecycle$' -test.count=1 -test.v -test.timeout=10m
