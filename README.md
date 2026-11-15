@@ -45,6 +45,38 @@ That comes with tradeoffs. Fresh snapshots mean more uploads, and separate job c
 
 The [comparison](docs/COMPARISON.md) goes through the differences. If you want to measure it yourself, the [benchmark guide](docs/BENCHMARKS.md) explains how.
 
+### An anecdote from my day job
+
+I work on [exasol/exasol-personal](https://github.com/exasol/exasol-personal) in my day job. To see whether this helped a real workflow, I [forked it](https://github.com/nicoheidtke/exasol-personal) and changed its CI to use `setup-go-faster` instead of `actions/setup-go`. With warm caches and the cache setup adjusted for the jobs, the build and test jobs finished noticeably sooner.
+
+Here are the observed workflow and complete job durations, including setup and post steps, from two upstream runs and the fork run:
+
+| Workflow / job | [Upstream run 43348902097](https://github.com/exasol/exasol-personal/actions/runs/43348902097) | [Upstream run 43442456182](https://github.com/exasol/exasol-personal/actions/runs/43442456182) | [Fork run 43666086120](https://github.com/nicoheidtke/exasol-personal/actions/runs/43666086120) |
+| --- | --- | --- | --- |
+| **Workflow elapsed** | **10m 18s** | **11m 00s** | **5m 51s** |
+| Build (Ubuntu) | 1m 44s | 1m 40s | 39s |
+| Build (Windows) | 2m 35s | 3m 01s | 1m 39s |
+| Unit tests | 2m 41s | 2m 35s | 1m 03s |
+| Launcher tests (Ubuntu) | 2m 09s | 2m 01s | 1m 44s |
+| Launcher tests (Windows) | 5m 08s | 4m 59s | 2m 22s |
+| Go lint | 52s | 1m 24s | 1m 39s |
+| Python lint | 29s | 27s | 28s |
+| SonarQube | 1m 29s | 1m 22s | Skipped |
+
+Here are the workflow graphs for the upstream PR run and the warm-cache fork run:
+
+**Upstream with `actions/setup-go` — 11m 00s** ([run](https://github.com/exasol/exasol-personal/actions/runs/43442456182)):
+
+![Upstream CI workflow graph: 11 minutes total, with successful lint, build, test, and SonarQube jobs.](docs/images/exasol-personal-upstream-ci.png)
+
+**Fork with `setup-go-faster` — 5m 51s** ([run](https://github.com/nicoheidtke/exasol-personal/actions/runs/43666086120)):
+
+![Fork CI workflow graph: 5 minutes 51 seconds total, with successful lint, build, and test jobs; SonarQube is skipped.](docs/images/exasol-personal-fork-ci.png)
+
+The upstream runs used `actions/setup-go` v6.5.0; the fork used `setup-go-faster` v1.0.0 with separate module/build caches, zstd compression, and matrix cache scopes. Its build and unit-test logs confirm that both Go cache snapshots were restored. I also changed the surrounding cache and warmup steps; launcher tests had Go caching disabled in the fork.
+
+This is anecdotal evidence, and the comparison isn't entirely fair: these were different revisions and triggers (upstream push/PR versus a manual fork run), SonarQube was skipped in the fork, and runner load and cache histories weren't controlled. Go lint was slower in the fork, too. The workflow totals therefore don't establish a speedup attributable to this action alone. Still, seeing the Ubuntu build drop to 39 seconds and unit tests to just over a minute is why I'm pursuing this: keeping useful build caches warm can make a very visible difference in everyday CI. A controlled comparison still needs the [benchmark methodology](docs/BENCHMARKS.md).
+
 ## More details
 
 - [Usage and input reference](docs/USAGE.md)
