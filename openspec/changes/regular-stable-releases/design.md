@@ -1,5 +1,7 @@
 # Design
 
+The subsequent [flexible release sources change](../flexible-release-sources/proposal.md) supersedes this change's main-only source and coupled-promotion decisions.
+
 ## Context
 
 See proposal.md. The current publisher already validates two builds, exact Git bytes/modes, leases, and nine remote asset digests. The repository has no public releases, so private preview plans and flags need no compatibility workaround.

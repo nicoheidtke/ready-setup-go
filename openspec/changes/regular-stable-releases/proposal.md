@@ -1,5 +1,7 @@
 # Proposal
 
+The subsequent [flexible release sources change](../flexible-release-sources/proposal.md) supersedes this change's main-only source and coupled-promotion decisions.
+
 ## Why
 
 The private-era dated preview publisher cannot publish a first public stable release. Maintaining a public action needs one main-only source workflow with ordinary versioned releases and no per-patch documentation chore.
