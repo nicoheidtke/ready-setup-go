@@ -17,7 +17,7 @@ See proposal.md. Current source checks require HEAD to equal a remote branch tip
 - Require the selected HEAD to be an ancestor of the recorded remote source anchor. Source branches are never pushed, and later branch advances cannot retarget a saved plan. The recovery bundle retains the source anchor as well as the prepared version tag.
 - Replace Promote with UpdateAliases and MakeLatest (auto/true/false). Resolve auto once against existing stable version tags. For each major/minor alias, promote only when no newer version in that series exists. A v1 patch after v2 can advance v1 without taking latest; an older minor only advances its own minor alias.
 - Use the previous lower release within the same minor, falling back to the same major, as generated-notes baseline. Notes generation needs contents write, so it runs in the trusted resolver job. Validate, package, and attest use separate jobs; requested attestations gate publication.
-- Save selected policy, source, artifacts, trusted publisher, and Git objects before remote writes. Publication restores the exact prepared objects and paths, verifies again, and retains conflict-safe recovery.
+- Pass controller and preparation artifacts between jobs using their exact immutable artifact IDs. Save selected policy, source, artifacts, trusted publisher, and Git objects before remote writes. Publication restores the exact prepared objects and paths, verifies again, and retains conflict-safe recovery.
 
 ## Risks / Trade-offs
 
