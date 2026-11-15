@@ -36,14 +36,21 @@ jobs:
           cache-dependency-path: |
             go.mod
             go.sum
+      - name: Run Go tests and vet
+        shell: bash
+        run: |
+          go test ./...
+          go vet ./...
       - name: Locate action's Node 24 runtime
+        if: matrix.go == '1.27.1'
         id: node-runtime
         uses: ./.github/actions/node-runtime
-      - name: Run contributor checks on the action runtime
+      - name: Run Node tests once per operating system
+        if: matrix.go == '1.27.1'
         shell: bash
         env:
           NODE24: ${{ steps.node-runtime.outputs.path }}
-        run: go run ./cmd/check --node "$NODE24"
+        run: '"$NODE24" --test launcher.test.cjs .github/actions/cache-benchmark/run.test.cjs .github/actions/node-runtime/locate.test.cjs .github/scripts/cache-probe.test.cjs'
   workflows:
     if: >-
       github.repository != 'nicoheidtke/setup-go-faster' || (github.actor == 'nicoheidtke' && github.triggering_actor == 'nicoheidtke')
@@ -51,6 +58,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.source-sha || github.sha }}
+          persist-credentials: false
       - uses: actions/setup-go@v7.0.0
         with:
           go-version: '1.27.1'
@@ -60,6 +70,16 @@ jobs:
             go.mod
             go.sum
             .github/workflows/ci.yml
+      - name: Check Go formatting once
+        shell: bash
+        run: |
+          unformatted=$(gofmt -l cmd internal testdata/smoke testdata/packages)
+          if [[ -n "$unformatted" ]]; then
+            printf '%s\n' "$unformatted"
+            exit 1
+          fi
+      - name: Check documentation once
+        run: go run ./cmd/check-docs
       - run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck= -pyflakes=
       - name: Verify workflow dependency lockfile
         env:
