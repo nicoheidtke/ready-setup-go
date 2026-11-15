@@ -36,6 +36,8 @@ Release builds use Go 1.27.1. Also check the Go 1.26 line and use Node 24 to ver
 
 Contributor-check and workflow-lint jobs reuse the official setup-go action's Go build and module caches, separated by operating system, architecture, and compiler version. Contributor jobs hash the root module files; workflow linting also hashes its workflow to refresh the pinned lint tool and use a separate cache. Native integration, release builds, and measurement workflows retain their existing cache isolation. Cache reuse is an optimization, not performance evidence.
 
+Installer validation runs Go tests and vet across all three operating systems and both compiler versions. Node suites run once per operating system in the release-compiler jobs; formatting and documentation consistency run once in the Linux workflow-lint job. Together these jobs cover the full canonical contributor checks without repeating compiler-independent checks in every matrix cell. The local `go run ./cmd/check` command still runs the complete suite.
+
 ### Reviewing contributions
 
 External contributors open PRs from forks and provide local or fork-workflow check results; see the [fork contribution workflow](../CONTRIBUTING.md#fork-contribution-workflow). Before merging, review the complete diff, including workflow files, test helpers, dependency changes, and scripts executed by checks. Confirm that the reported results apply to the current PR head; a later push requires renewed review and validation.
