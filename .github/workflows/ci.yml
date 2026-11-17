@@ -1,0 +1,208 @@
+name: Installer validation
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      source-sha:
+        description: Frozen action source revision selected by release orchestration
+        type: string
+        required: false
+        default: ''
+permissions:
+  contents: read
+concurrency:
+  group: validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  unit:
+    if: >-
+      github.repository != 'nicoheidtke/ready-setup-go' || (github.actor == 'nicoheidtke' && github.triggering_actor == 'nicoheidtke')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025, macos-15-intel]
+        go: ['1.26.8', '1.27.1']
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.source-sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: ${{ matrix.go }}
+          cache: true
+          cache-dependency-path: |
+            go.mod
+            go.sum
+      - name: Run Go tests and vet
+        shell: bash
+        run: |
+          go test ./...
+          go vet ./...
+      - name: Locate action's Node 24 runtime
+        if: matrix.go == '1.27.1'
+        id: node-runtime
+        uses: ./.github/actions/node-runtime
+      - name: Run Node tests once per operating system
+        if: matrix.go == '1.27.1'
+        shell: bash
+        env:
+          NODE24: ${{ steps.node-runtime.outputs.path }}
+        run: '"$NODE24" --test launcher.test.cjs .github/actions/cache-benchmark/run.test.cjs .github/actions/node-runtime/locate.test.cjs .github/scripts/cache-probe.test.cjs'
+  workflows:
+    if: >-
+      github.repository != 'nicoheidtke/ready-setup-go' || (github.actor == 'nicoheidtke' && github.triggering_actor == 'nicoheidtke')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.source-sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: '1.27.1'
+          cache: true
+          # Include the lint tool pin and keep its cache separate from unit jobs.
+          cache-dependency-path: |
+            go.mod
+            go.sum
+            .github/workflows/ci.yml
+      - name: Check Go formatting once
+        shell: bash
+        run: |
+          unformatted=$(gofmt -l cmd internal testdata/smoke testdata/packages)
+          if [[ -n "$unformatted" ]]; then
+            printf '%s\n' "$unformatted"
+            exit 1
+          fi
+      - name: Check documentation once
+        run: go run ./cmd/check-docs
+      - run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck= -pyflakes=
+      - name: Verify workflow dependency lockfile
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh extension install github/gh-actions-lock --pin v0.4.1
+          gh actions-lock --verify --ignore-local-actions
+  integration:
+    if: >-
+      github.repository != 'nicoheidtke/ready-setup-go' || (github.actor == 'nicoheidtke' && github.triggering_actor == 'nicoheidtke')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux/amd64
+          - os: ubuntu-24.04-arm
+            platform: linux/arm64
+          - os: macos-15-intel
+            platform: darwin/amd64
+          - os: macos-15
+            platform: darwin/arm64
+          - os: windows-2025
+            platform: windows/amd64
+          - os: windows-11-arm
+            platform: windows/arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      GOTOOLCHAIN: local
+      GOTELEMETRY: 'off'
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.source-sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - name: Package native executable
+        run: go run ./cmd/package --platform '${{ matrix.platform }}'
+      - name: Package and verify native lightweight fixture
+        run: |
+          go run ./cmd/package --require-clean --platform '${{ matrix.platform }}' --out .cache/native-light/dist --archives .cache/native-light/assets --native-download-base https://github.com/nicoheidtke/ready-setup-go/releases/download/local-validation
+          go run ./cmd/verify-distribution --platform '${{ matrix.platform }}' --dist .cache/native-light/dist --archives .cache/native-light/assets
+      - name: Cold install through composite launcher
+        id: cold
+        uses: ./dist/experimental/composite
+        with:
+          go-version-file: testdata/smoke/go.mod
+      - name: Compile and test with selected toolchain
+        shell: bash
+        working-directory: testdata/smoke
+        run: |
+          test "$(go env GOVERSION)" = 'go1.26.0'
+          go build ./...
+          go test ./...
+      - name: Test well-known dependencies with selected toolchain
+        working-directory: testdata/packages
+        run: go test -mod=readonly -count=1 ./...
+      - name: Reuse through Node launcher with network disabled
+        id: warm
+        uses: ./dist/experimental/node
+        env:
+          HTTP_PROXY: http://127.0.0.1:1
+          HTTPS_PROXY: http://127.0.0.1:1
+          NO_PROXY: ''
+        with:
+          go-version-file: testdata/smoke/go.mod
+          check-latest: 'true'
+          cache: off
+      - name: Check action outputs
+        shell: bash
+        env:
+          COLD_ROOT: ${{ steps.cold.outputs.goroot }}
+          WARM_ROOT: ${{ steps.warm.outputs.goroot }}
+          WARM_VERSION: ${{ steps.warm.outputs.go-version }}
+        run: |
+          test "$COLD_ROOT" = "$WARM_ROOT"
+          test "$WARM_VERSION" = '1.26.0'
+      - name: Locate action Node runtime for packaged lifecycle fixtures
+        id: lifecycle-node
+        uses: ./.github/actions/node-runtime
+      - name: Ensure the native fixture toolchain is installed
+        shell: bash
+        env:
+          TARGET_PLATFORM: ${{ matrix.platform }}
+        run: |
+          native="dist/bin/${TARGET_PLATFORM//\//-}/ready-setup-go"
+          if [[ "$TARGET_PLATFORM" == windows/* ]]; then native+='.exe'; fi
+          # Set child-process configuration rather than overriding reserved
+          # RUNNER_* variables in workflow env. Keep the build compiler active.
+          RUNNER_TOOL_CACHE='' GITHUB_ENV='' GITHUB_PATH='' GITHUB_OUTPUT='' GITHUB_STEP_SUMMARY='' \
+            "$native" setup --go-version=1.26.0 --cache=off --summary=false
+      - name: Compile packaged lifecycle tests once
+        shell: bash
+        run: go test -c -o "$RUNNER_TEMP/cache-lifecycle.test.exe" ./internal/cache
+      - name: Native archive and chunked main/post fixtures
+        shell: bash
+        working-directory: internal/cache
+        env:
+          READY_SETUP_GO_TEST_DIST: ${{ github.workspace }}/dist
+          READY_SETUP_GO_TEST_RUNNER_TEMP: ${{ runner.temp }}
+          READY_SETUP_GO_TEST_VERSION: '1.26.0'
+          READY_SETUP_GO_TEST_NODE: ${{ steps.lifecycle-node.outputs.path }}
+          READY_SETUP_GO_TEST_BASH: bash
+        run: |
+          for compression in gzip zstd none; do
+            for storage in archive chunked; do
+              READY_SETUP_GO_TEST_COMPRESSION="$compression" READY_SETUP_GO_TEST_STORAGE="$storage" "$RUNNER_TEMP/cache-lifecycle.test.exe" -test.run '^TestPackagedLifecycle$' -test.count=1 -test.v -test.timeout=10m
+            done
+          done
+          "$RUNNER_TEMP/cache-lifecycle.test.exe" -test.run '^TestPackagedCancellation$' -test.count=1 -test.v -test.timeout=10m
+      - name: Native lightweight main/post bootstrap and reuse
+        shell: bash
+        working-directory: internal/cache
+        env:
+          READY_SETUP_GO_TEST_DIST: ${{ github.workspace }}/.cache/native-light/dist
+          READY_SETUP_GO_TEST_NATIVE_ASSETS: ${{ github.workspace }}/.cache/native-light/assets
+          READY_SETUP_GO_TEST_RUNNER_TEMP: ${{ runner.temp }}
+          READY_SETUP_GO_TEST_VERSION: '1.26.0'
+          READY_SETUP_GO_TEST_NODE: ${{ steps.lifecycle-node.outputs.path }}
+        run: |
+          READY_SETUP_GO_TEST_COMPRESSION=zstd READY_SETUP_GO_TEST_STORAGE=archive "$RUNNER_TEMP/cache-lifecycle.test.exe" -test.run '^TestPackagedLifecycle$' -test.count=1 -test.v -test.timeout=10m
+          READY_SETUP_GO_TEST_COMPRESSION=gzip READY_SETUP_GO_TEST_STORAGE=chunked "$RUNNER_TEMP/cache-lifecycle.test.exe" -test.run '^TestPackagedLifecycle$' -test.count=1 -test.v -test.timeout=10m

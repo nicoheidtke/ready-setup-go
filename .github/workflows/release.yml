@@ -1,0 +1,339 @@
+name: Release action
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Exact version (v1.0.0); empty prepares artifacts only
+        type: string
+        default: ''
+      source_branch:
+        description: Repository source branch (workflow automation always runs from main)
+        type: string
+        default: main
+      source_commit:
+        description: Optional full commit SHA from source_branch; empty selects its tip
+        type: string
+        default: ''
+      notes:
+        description: Optional reviewed notes; empty generates notes within the version line
+        type: string
+        default: ''
+      publish:
+        description: Publish after validation, reproducible builds, and requested attestations
+        type: boolean
+        default: false
+      update_aliases:
+        description: Advance eligible major/minor aliases without moving any backwards
+        type: boolean
+        default: true
+      make_latest:
+        description: Mark GitHub latest (auto keeps a newer version latest)
+        type: choice
+        options: [auto, 'true', 'false']
+        default: auto
+      attest:
+        description: Generate GitHub-hosted build provenance before publication
+        type: boolean
+        default: true
+permissions:
+  contents: read
+concurrency:
+  group: action-distribution-release
+  cancel-in-progress: false
+jobs:
+  resolve:
+    if: >-
+      github.repository != 'nicoheidtke/ready-setup-go' || (github.actor == 'nicoheidtke' && github.triggering_actor == 'nicoheidtke')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # GitHub's generated-notes API requires contents write. Candidate code never
+    # runs in this job; this token is exposed only to that API step.
+    permissions:
+      contents: write
+    outputs:
+      source: ${{ steps.source.outputs.source }}
+      source-ref: ${{ steps.source.outputs.source-ref }}
+      source-anchor: ${{ steps.source.outputs.source-anchor }}
+      controller-artifact: ${{ steps.controller-artifact.outputs.artifact-id }}
+    env:
+      GOTOOLCHAIN: local
+      GOTELEMETRY: 'off'
+    steps:
+      - name: Require current main automation
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          PUBLISH: ${{ inputs.publish }}
+        run: |
+          if [[ "$GITHUB_REF" != refs/heads/main ]]; then
+            echo 'Run automation from main; use source_branch to select other action code.' >&2
+            exit 1
+          fi
+          if [[ "$PUBLISH" == true && -z "$RELEASE_TAG" ]]; then
+            echo 'Publishing requires an exact version tag.' >&2
+            exit 1
+          fi
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - name: Build trusted release controller
+        shell: bash
+        run: |
+          mkdir -p .cache/controller
+          go build -trimpath -o .cache/controller/release ./cmd/release
+          printf '%s\n' "$GITHUB_SHA" > .cache/controller/controller-revision
+      - name: Resolve one source snapshot
+        id: source
+        shell: bash
+        env:
+          SOURCE_BRANCH: ${{ inputs.source_branch }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          .cache/controller/release source --repository "$GITHUB_REPOSITORY" --branch "$SOURCE_BRANCH" --commit "$SOURCE_COMMIT" --tag "$RELEASE_TAG" > .cache/controller/selection.json
+          {
+            printf 'source=%s\n' "$(jq -r .source .cache/controller/selection.json)"
+            printf 'source-ref=%s\n' "$(jq -r .source_ref .cache/controller/selection.json)"
+            printf 'source-anchor=%s\n' "$(jq -r .anchor .cache/controller/selection.json)"
+          } >> "$GITHUB_OUTPUT"
+      - name: Prepare notes and bind the publication request
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_NOTES: ${{ inputs.notes }}
+          UPDATE_ALIASES: ${{ inputs.update_aliases }}
+          MAKE_LATEST: ${{ inputs.make_latest }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ -n "$RELEASE_TAG" && -z "$RELEASE_NOTES" ]]; then
+            args=(-f "tag_name=$RELEASE_TAG" -f "target_commitish=$(jq -r .source .cache/controller/selection.json)")
+            previous=$(jq -r '.previous_tag // empty' .cache/controller/selection.json)
+            if [[ -n "$previous" ]]; then args+=(-f "previous_tag_name=$previous"); fi
+            RELEASE_NOTES=$(gh api --method POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" "${args[@]}" --jq .body)
+          fi
+          printf '%s\n\nValidation: https://github.com/%s/actions/runs/%s\n\nAutomation revision: `%s`\n' "$RELEASE_NOTES" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$GITHUB_SHA" > .cache/controller/notes.md
+          jq --arg root "$GITHUB_WORKSPACE" --arg repo "$GITHUB_REPOSITORY" --arg tag "$RELEASE_TAG" --arg latest "$MAKE_LATEST" --argjson aliases "$UPDATE_ALIASES" --rawfile notes .cache/controller/notes.md '
+            {source: .source, config: {Root: $root, Repository: $repo, Remote: "origin", SourceRef: .source_ref, SourceAnchor: .anchor, DistributionRef: "refs/heads/dist", Tag: $tag, Notes: $notes, UpdateAliases: $aliases, MakeLatest: $latest,
+            Dist: ($root + "/.cache/package/dist"), Assets: ($root + "/.cache/package/artifacts"), ReproDist: ($root + "/.cache/package/dist-repro"), ReproAssets: ($root + "/.cache/package/artifacts-repro")}}' .cache/controller/selection.json > .cache/controller/request.json
+      - uses: actions/upload-artifact@v7.0.2
+        id: controller-artifact
+        with:
+          name: release-controller
+          path: .cache/controller/*
+          retention-days: 14
+  validate:
+    needs: resolve
+    uses: ./.github/workflows/ci.yml
+    with:
+      source-sha: ${{ needs.resolve.outputs.source }}
+  package:
+    needs: [resolve, validate]
+    outputs:
+      preparation-artifact: ${{ steps.preparation-artifact.outputs.artifact-id }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GOTOOLCHAIN: local
+      GOTELEMETRY: 'off'
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.source }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - name: Locate action's Node 24 runtime
+        id: node-runtime
+        uses: ./.github/actions/node-runtime
+      - name: Run all contributor and workflow checks on the action runtime
+        shell: bash
+        env:
+          NODE24: ${{ steps.node-runtime.outputs.path }}
+        run: go run ./cmd/check --node "$NODE24" --workflows
+      - name: Build all six platforms
+        run: go run ./cmd/package --require-clean --out .cache/package/dist --archives .cache/package/artifacts
+      - name: Verify reproducible builds and archives
+        shell: bash
+        run: |
+          go run ./cmd/package --require-clean --out .cache/package/dist-repro --archives .cache/package/artifacts-repro
+          diff -r .cache/package/dist .cache/package/dist-repro
+          diff -r .cache/package/artifacts .cache/package/artifacts-repro
+          go run ./cmd/verify-distribution --dist .cache/package/dist --archives .cache/package/artifacts
+      - name: Package and verify local lightweight fixture
+        run: |
+          go run ./cmd/package --require-clean --platform linux/amd64 --out .cache/package/light-dist --archives .cache/package/light-assets --native-download-base https://github.com/nicoheidtke/ready-setup-go/releases/download/local-validation
+          go run ./cmd/verify-distribution --platform linux/amd64 --dist .cache/package/light-dist --archives .cache/package/light-assets
+      - name: Install isolated fixture toolchain through prepared bundle
+        shell: bash
+        env:
+          FIXTURE_TEMP: ${{ runner.temp }}/package fixture with spaces
+        run: |
+          RUNNER_TEMP="$FIXTURE_TEMP" RUNNER_TOOL_CACHE='' GITHUB_ENV='' GITHUB_PATH='' GITHUB_OUTPUT='' GITHUB_STEP_SUMMARY='' \
+            .cache/package/dist/bin/linux-amd64/ready-setup-go setup --go-version=1.27.1 --cache=off --summary=false
+      - name: Compile packaged lifecycle tests once
+        shell: bash
+        run: go test -c -o "$RUNNER_TEMP/cache-lifecycle.test.exe" ./internal/cache
+      - name: Gate preparation on bundled codec and storage lifecycles
+        shell: bash
+        working-directory: internal/cache
+        env:
+          READY_SETUP_GO_TEST_DIST: ${{ github.workspace }}/.cache/package/dist
+          READY_SETUP_GO_TEST_RUNNER_TEMP: ${{ runner.temp }}/package fixture with spaces
+          READY_SETUP_GO_TEST_VERSION: '1.27.1'
+          READY_SETUP_GO_TEST_NODE: ${{ steps.node-runtime.outputs.path }}
+          READY_SETUP_GO_TEST_BASH: bash
+        run: |
+          for compression in gzip zstd none; do
+            for storage in archive chunked; do
+              READY_SETUP_GO_TEST_COMPRESSION="$compression" READY_SETUP_GO_TEST_STORAGE="$storage" "$RUNNER_TEMP/cache-lifecycle.test.exe" -test.run '^TestPackagedLifecycle$' -test.count=1 -test.v -test.timeout=10m
+            done
+          done
+          "$RUNNER_TEMP/cache-lifecycle.test.exe" -test.run '^TestPackagedCancellation$' -test.count=1 -test.v -test.timeout=10m
+      - name: Gate preparation on verified lightweight bootstrap reuse
+        shell: bash
+        working-directory: internal/cache
+        env:
+          READY_SETUP_GO_TEST_DIST: ${{ github.workspace }}/.cache/package/light-dist
+          READY_SETUP_GO_TEST_NATIVE_ASSETS: ${{ github.workspace }}/.cache/package/light-assets
+          READY_SETUP_GO_TEST_RUNNER_TEMP: ${{ runner.temp }}/package fixture with spaces
+          READY_SETUP_GO_TEST_VERSION: '1.27.1'
+          READY_SETUP_GO_TEST_NODE: ${{ steps.node-runtime.outputs.path }}
+        run: |
+          READY_SETUP_GO_TEST_COMPRESSION=zstd READY_SETUP_GO_TEST_STORAGE=archive "$RUNNER_TEMP/cache-lifecycle.test.exe" -test.run '^TestPackagedLifecycle$' -test.count=1 -test.v -test.timeout=10m
+          READY_SETUP_GO_TEST_COMPRESSION=gzip READY_SETUP_GO_TEST_STORAGE=chunked "$RUNNER_TEMP/cache-lifecycle.test.exe" -test.run '^TestPackagedLifecycle$' -test.count=1 -test.v -test.timeout=10m
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          artifact-ids: ${{ needs.resolve.outputs.controller-artifact }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/release-controller
+      - name: Prepare exact Git objects and recovery inputs
+        if: inputs.tag != ''
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          SOURCE_REF: ${{ needs.resolve.outputs.source-ref }}
+          SOURCE_ANCHOR: ${{ needs.resolve.outputs.source-anchor }}
+          UPDATE_ALIASES: ${{ inputs.update_aliases }}
+          MAKE_LATEST: ${{ inputs.make_latest }}
+          CONTROLLER: ${{ runner.temp }}/release-controller
+        run: |
+          chmod +x "$CONTROLLER/release"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch origin "$SOURCE_ANCHOR:refs/ready-setup-go/source-anchor"
+          cp "$CONTROLLER/notes.md" .cache/package/notes.md
+          "$CONTROLLER/release" plan --repository "$GITHUB_REPOSITORY" --source-ref "$SOURCE_REF" --source-anchor "$SOURCE_ANCHOR" --update-aliases="$UPDATE_ALIASES" --make-latest="$MAKE_LATEST" --tag "$RELEASE_TAG" --notes .cache/package/notes.md --dist .cache/package/dist --assets .cache/package/artifacts --repro-dist .cache/package/dist-repro --repro-assets .cache/package/artifacts-repro --plan .cache/package/plan.json
+          "$CONTROLLER/release" prepare --plan .cache/package/plan.json --request "$CONTROLLER/request.json"
+          "$CONTROLLER/release" publish --plan .cache/package/plan.json --request "$CONTROLLER/request.json"
+          git bundle create .cache/package/recovery.bundle HEAD refs/ready-setup-go/source-anchor "refs/tags/$RELEASE_TAG"
+      - name: Retain preparation and recovery inputs
+        id: preparation-artifact
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: release-preparation
+          path: |
+            .cache/package/plan.json
+            .cache/package/notes.md
+            .cache/package/recovery.bundle
+            .cache/package/dist/**
+            .cache/package/artifacts/**
+          include-hidden-files: true
+          retention-days: 14
+  attest:
+    if: inputs.attest
+    needs: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          artifact-ids: ${{ needs.package.outputs.preparation-artifact }}
+          merge-multiple: true
+          path: .cache/package
+      - name: Recheck same-run artifact payloads before signing
+        working-directory: .cache/package/artifacts
+        run: sha256sum -c SHA256SUMS
+      - name: Attest prepared artifacts from this run
+        id: provenance
+        uses: actions/attest@v4.2.2
+        with:
+          subject-path: .cache/package/artifacts/*
+          create-storage-record: false
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: action-attestation
+          path: ${{ steps.provenance.outputs.bundle-path }}
+          include-hidden-files: true
+          retention-days: 14
+  publish:
+    needs: [resolve, package, attest]
+    if: >-
+      always() && !cancelled() && inputs.publish && needs.package.result == 'success' &&
+      (needs.attest.result == 'success' || (!inputs.attest && needs.attest.result == 'skipped'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: write
+    env:
+      GOTOOLCHAIN: local
+      GOTELEMETRY: 'off'
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.source }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          artifact-ids: ${{ needs.package.outputs.preparation-artifact }}
+          merge-multiple: true
+          path: .cache/package
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          artifact-ids: ${{ needs.resolve.outputs.controller-artifact }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/release-controller
+      - name: Restore prepared objects and verify the trusted request
+        shell: bash
+        env:
+          CONTROLLER: ${{ runner.temp }}/release-controller
+        run: |
+          chmod +x "$CONTROLLER/release"
+          # Artifact transport strips executable bits; restore only known native
+          # paths. The publisher separately verifies Git and ZIP executable modes.
+          chmod +x .cache/package/dist/bin/{linux,darwin}-{amd64,arm64}/ready-setup-go
+          git fetch .cache/package/recovery.bundle '+refs/tags/*:refs/tags/*' '+refs/ready-setup-go/source-anchor:refs/ready-setup-go/source-anchor'
+          "$CONTROLLER/release" publish --plan .cache/package/plan.json --request "$CONTROLLER/request.json"
+      - name: Publish the selected snapshot
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CONTROLLER: ${{ runner.temp }}/release-controller
+        run: |
+          gh auth setup-git
+          "$CONTROLLER/release" publish --execute --plan .cache/package/plan.json --request "$CONTROLLER/request.json"
+          {
+            printf '### Published release\n\n'
+            printf '[Release](%s)\n\n' "$(jq -r .published_url .cache/package/plan.json)"
+            printf 'Action pin: `nicoheidtke/ready-setup-go@%s`\n' "$(jq -r .distribution .cache/package/plan.json)"
+            printf 'Source: `%s`\n' "$(jq -r .source .cache/package/plan.json)"
+          } >> "$GITHUB_STEP_SUMMARY"

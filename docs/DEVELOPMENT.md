@@ -1,0 +1,144 @@
+# Development
+
+Start with [CONTRIBUTING.md](../CONTRIBUTING.md) for prerequisites, checks, and change expectations. This guide covers integration and current validation boundaries. [Release procedures](RELEASES.md) cover packaging/publication; [measurement methodology](BENCHMARKS.md) covers performance evidence.
+
+## Source layout
+
+| Path | Responsibility |
+| --- | --- |
+| `cmd/ready-setup-go` | Native setup and post-job entrypoints |
+| `internal/installer` | Version selection, discovery, verified download/extraction, and installation |
+| `internal/cache` | Inputs/configuration; separate state/identity, backend policy, transfer, lifecycle, and report files |
+| `internal/cachearchive` | Shared archive types/options; separate packing, restore/staging, merge, path-safety, and bounded-I/O files |
+| `internal/cachebackend` | Cache-v2 and signed blob transfers; see [protocol](../internal/cachebackend/PROTOCOL.md) |
+| `internal/actionenv`, `internal/actionlog`, `internal/httpretry` | Runner protocols, presentation, and replay-safe retries |
+| `internal/distribution`, `internal/release` | Provenance, integrity, and publication |
+| `cmd/package`, `cmd/verify-distribution`, `cmd/release` | Distribution/release commands |
+| `cmd/check`, `cmd/check-docs` | Contributor checks and documentation consistency |
+| Other `cmd/` tools | Installer, acquisition, cache, and workflow measurements |
+| Root `.cjs` files | Dependency-free Node 24 runner bridge |
+| `experimental/` | Node alias and installer-only Bash comparison |
+| `testdata/`, `.github/` | Workloads, fixtures, and manual workflows |
+
+Runtime Go code uses the standard library plus the pinned `github.com/klauspost/compress/zstd` codec. Consumers use bundled executables without building the action, installing npm packages, or installing compression tools. Source-only revisions cannot run as actions. Optional lightweight distribution packaging adds a verified public-asset bootstrap; see [release procedures](RELEASES.md#lightweight-distributions).
+
+## Maintained interfaces
+
+The root `action.yml` is the recommended consumer entrypoint. `experimental/node` remains a compatibility alias for the same main/post lifecycle. `experimental/composite` and `launch.sh` are installer-only comparison paths; they do not provide the cache lifecycle. Integration fixtures and launcher benchmarks still exercise these paths, so changing or removing them requires updating that coverage and assessing compatibility.
+
+Setup input parsing lives in `cmd/ready-setup-go/options.go`, separate from installation and runner protocols. Contract tests compare parsed defaults and every action input with root/Node-alias metadata, including explicit flag overrides. Keep these tests current when adding an input; documentation defaults are independently checked by `cmd/check-docs`. The launcher continues translating `check-latest` and standalone version fallback variables into flags.
+
+Measurement commands are maintainer tools, separate from the action's public inputs and outputs. Their purposes and measurement limits are listed in [performance measurement](BENCHMARKS.md#tools). Keep generated distributions and raw reports in ignored output directories.
+
+## Validation
+
+Release builds use Go 1.27.1. Also check the Go 1.26 line and use Node 24 to verify the action runtime. Run contribution checks after changes; native integration and hosted service checks cover additional boundaries.
+
+Contributor-check and workflow-lint jobs reuse the official setup-go action's Go build and module caches, separated by operating system, architecture, and compiler version. Contributor jobs hash the root module files; workflow linting also hashes its workflow to refresh the pinned lint tool and use a separate cache. Native integration, release builds, and measurement workflows retain their existing cache isolation. Cache reuse is an optimization, not performance evidence.
+
+Installer validation runs Go tests and vet across all three operating systems and both compiler versions. Node suites run once per operating system in the release-compiler jobs; formatting and documentation consistency run once in the Linux workflow-lint job. Together these jobs cover the full canonical contributor checks without repeating compiler-independent checks in every matrix cell. The local `go run ./cmd/check` command still runs the complete suite.
+
+### Reviewing contributions
+
+External contributors open PRs from forks and provide local or fork-workflow check results; see the [fork contribution workflow](../CONTRIBUTING.md#fork-contribution-workflow). Before merging, review the complete diff, including workflow files, test helpers, dependency changes, and scripts executed by checks. Confirm that the reported results apply to the current PR head; a later push requires renewed review and validation.
+
+To validate a reviewed PR locally, use a disposable checkout without release credentials or unrelated private files. With GitHub CLI installed, replace `PR_NUMBER` with the PR number:
+
+```text
+git clone https://github.com/nicoheidtke/ready-setup-go.git ready-setup-go-review
+cd ready-setup-go-review
+gh pr checkout PR_NUMBER
+git rev-parse HEAD
+go run ./cmd/check --workflows
+```
+
+Record the printed commit SHA and the check results in your review. Add the relevant native integration checks below when runtime or lifecycle behavior changes. A local checkout is not a sandbox: contributor tests and build tools execute code, so use a separate disposable environment when the change needs isolation.
+
+The upstream **Installer validation** workflow checks the branch selected when it is manually dispatched. It does not select or test a fork PR automatically. There is no separate PR-testing workflow; use the local procedure above for validation before merging. After merging, dispatch the existing validation workflow on `main` when hosted coverage is needed. Do not make these manual branch checks required PR checks: their results are not automatically attached to the PR head.
+
+In `nicoheidtke/ready-setup-go`, each committed workflow job checks both the original actor and the person initiating a rerun against the maintainer account. Forks retain their existing manual workflows. These checks supplement GitHub's write-access restrictions; they skip unauthorized jobs rather than preventing creation of a workflow-run record. GitHub-managed Dependabot update jobs are separate and remain enabled. Repository access, installed apps, branch protection, and review of workflow edits remain the authorization boundary.
+
+### Bounded fuzzing
+
+Ordinary tests execute the seed corpora for `FuzzPortablePath` and `FuzzVersionFile`. They check native path confinement/canonicalization, stable Unicode case folding, and supported version-selector extraction/round trips. Mutation fuzzing is opt-in; run one target at a time with a fixed duration and worker bound:
+
+```text
+go test ./internal/cachearchive -run='^$' -fuzz='^FuzzPortablePath$' -fuzztime=30s -parallel=2
+go test ./internal/installer -run='^$' -fuzz='^FuzzVersionFile$' -fuzztime=30s -parallel=2
+```
+
+Targets skip oversized mutations (4 KiB paths, 16 KiB version-file content) to bound per-input work. These are test limits, not changes to runtime acceptance. Fuzzing uses the local Go fuzz cache and may write a minimized failure under the package's `testdata/fuzz` directory; review and retain reproducible regression inputs. Short local runs cover only their stated corpus, compiler, and native platform; they do not establish archive-stream, hosted-service, or cross-platform coverage. Use `go run ./cmd/check --race` separately for concurrent runtime packages; report missing race-toolchain prerequisites as skipped coverage, not a pass.
+
+### Local packaged lifecycle
+
+Package the native platform into an ignored directory (substitute the host OS/architecture):
+
+```text
+go run ./cmd/package --platform windows/amd64 --out .cache/native-dist
+```
+
+`TestPackagedLifecycle` consumes a prebuilt distribution and an installed toolchain; it never downloads Go or compiles the action. Set these environment variables:
+
+| Variable | Value |
+| --- | --- |
+| `READY_SETUP_GO_TEST_DIST` | Absolute bundled or lightweight distribution directory |
+| `READY_SETUP_GO_TEST_NATIVE_ASSETS` | For lightweight distributions, the matching local packaged asset directory; injects a file-stream transport and isolates bootstrap reuse without contacting GitHub |
+| `READY_SETUP_GO_TEST_RUNNER_TEMP` | Parent of `ready-setup-go/toolchains/<version>/<os>-<arch>/bin/go[.exe]` |
+| `READY_SETUP_GO_TEST_VERSION` | Installed exact version; default `1.26.4` |
+| `READY_SETUP_GO_TEST_STORAGE` | Run once with `archive`, once with `chunked` |
+| `READY_SETUP_GO_TEST_COMPRESSION` | `gzip` (default), `zstd`, or `none`; repeat for the codecs affected by a change |
+| `READY_SETUP_GO_TEST_GZIP_LEVEL` | `default` (default) or `1` through `9`; repeat gzip tests with `1` for the fast profile |
+| `READY_SETUP_GO_TEST_NODE` | Node 24 executable; default `node` |
+| `READY_SETUP_GO_TEST_BASH` | Optional Bash executable for installer-only reuse |
+
+```text
+go test ./internal/cache -run '^TestPackagedLifecycle$' -count=1 -v
+```
+
+The test exercises root main/post, the Node alias, reports/state/summaries, real compilation, and offline Bash reuse against a loopback cache-v2 fixture. Without the distribution variable it is skipped. For lightweight distributions, the native-assets variable is required; the fixture verifies one bootstrap acquisition across main/post and the Node alias using actual packaged executable bytes. This injected local transport does not validate public GitHub redirects, private repository access, or hosted performance. Unit fixtures cover archive safety, existing-file priority, read-only modules, cancellation/worker cleanup, access-policy changes, and forced immutable-writer races.
+
+### Packaged process cancellation
+
+With a newly packaged bundled distribution and the same installed-toolchain variables above, run:
+
+```text
+go test ./internal/cache -run '^TestPackagedCancellation$' -count=1 -v
+```
+
+On Linux/macOS this fixture starts the actual Node launcher and native executable against a stalled loopback cache download, then sends SIGINT and SIGTERM only to Node. It requires a failed launcher exit after the native request is cancelled and private transfer files are removed, without cache publication or post-job state. Fixture timeouts kill its private process group on failure. The native executable handles both POSIX signals; the asynchronous launcher forwards them and waits for child cleanup. Mock launcher tests also check forwarding and joining without sending signals to the test runner.
+
+Windows skips this fixture explicitly: Node child termination uses forceful Windows process termination and cannot guarantee deferred native cleanup. Native console interrupts remain supported. Local POSIX signal tests do not establish GitHub runner cancellation behavior, force-kill cleanup, or hosted post-job policy; retain the separate hosted cancellation probe.
+
+### Hosted lifecycle
+
+Workflows are manual; maintainers control execution and costs. Native integration checks all six targets without multiplying matrix jobs: each runs bundled main/post fixtures for gzip/zstd/none with archive/chunked storage, one platform-appropriate cancellation fixture, and lightweight archive/zstd plus chunked/gzip bootstrap/reuse cases. The lightweight fixtures use local packaged assets, not public release downloads. The release workflow resolves a fixed source SHA and passes it to that complete validation suite, then independently gates artifact upload on the same cases on Linux amd64 and complete contributor/workflow checks; its Linux preparation fixtures remain separate from six-native validation. The consumer workflow takes a full distribution SHA and checks the published bundle.
+
+Each native integration and release preparation job compiles the cache test executable once, then starts a fresh process for each fixture case from `internal/cache`, preserving package-relative paths and the ten-minute per-process test timeout. The two release distribution builds remain separate for byte-for-byte reproducibility verification.
+
+Use `cache-validation.yml` with a fresh scope for each independent probe. Fix source/toolchain, runner, dependencies, job identity, and settings within each pair. Inspect completed post logs before treating `probe.json` intended `fresh_keys` as saved entries. `expect-hit` requires a complete restore; `expect-miss` requires no match or payload; `expected-match` requires exact reviewed seed keys.
+
+| Case | Required observation |
+| --- | --- |
+| Cold/warm | Successful seed post-save, then restore-only hit on exact seed keys |
+| Restore-only | No save; later restore in the fresh scope remains a clean miss |
+| Failed job | Default policy does not save; opted-in save requires successful post and later restore |
+| Cancelled job | Actual cancelled conclusion, no save-post execution, later clean miss; wait expiry is inconclusive |
+| Concurrent snapshots | Distinct keys, reviewed post results, and valid later restore; reservation conflict alone proves no committed chunk |
+| Branch access | Default-branch fallback works; sibling-only seeds remain inaccessible where service rules deny them |
+| Restricted access | Actual runner token policy enforces restrictions; environment overrides only test local handling |
+
+Fork/merge-ref behavior requires its real event/token context. Manual dispatch cannot establish it. Never broaden permissions or use `pull_request_target` to bypass a probe. Intentionally failed policy probes retain their failed conclusion and need independent post inspection.
+
+Retain revisions, runner image, Go version, inputs, event/ref, seed/matched keys, job/post conclusions, warnings, and logs. List incomplete/unavailable cases. Ordinary artifacts precede post hooks and cannot collect save reports; use debug logs or a subsequent collector. Synchronous benchmarks capture both phases but exclude runner post dispatch.
+
+## Support and validation status
+
+The source targets Go 1.26+ on Linux/macOS/Windows, amd64/arm64. Caching defaults off; enabled caching defaults to archive/gzip. Self-hosted runners have no guarantee against hostile concurrent filesystem writers.
+
+Contributor checks, native packaged lifecycle fixtures, cross-compilation, hosted service behavior, and measured performance are separate evidence. Run the applicable checks above for each candidate. No controlled end-to-end speedup is established. The [roadmap](../ROADMAP.md) lists remaining validation and performance work.
+
+## Release provenance
+
+[GitHub Releases](https://github.com/nicoheidtke/ready-setup-go/releases) records each version's distribution SHA, exact source revision, checksums, compiler metadata, and validation workflow. `v1` and `v1.0` are convenience aliases; full version tags identify fixed distributions. Source commits cannot run as actions.
+
+Keep release evidence with its release rather than updating source documentation after every patch. The [release checklist](RELEASES.md#maintainer-checklist) explains the source snapshot workflow and recovery.

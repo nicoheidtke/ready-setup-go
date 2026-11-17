@@ -1,0 +1,34 @@
+name: Ready Setup Go (Bash installation experiment)
+description: Installation-only composite launcher for paired launcher measurements. Cache lifecycle requires the root Node action.
+inputs:
+  go-version:
+    description: Exact Go version or minor selector.
+    required: false
+  go-version-file:
+    description: Workspace-relative go.mod or go.work path. Explicit go-version takes precedence.
+    required: false
+  check-latest:
+    description: Resolve minor selectors against official releases.
+    default: 'false'
+  summary:
+    description: Write concise toolchain results to the GitHub job summary.
+    default: 'true'
+outputs:
+  go-version:
+    description: Selected exact Go version.
+    value: ${{ steps.setup.outputs.go-version }}
+  goroot:
+    description: Selected toolchain directory.
+    value: ${{ steps.setup.outputs.goroot }}
+runs:
+  using: composite
+  steps:
+    - id: setup
+      shell: bash
+      env:
+        READY_SETUP_GO_ROOT: ${{ github.action_path }}/../..
+        READY_SETUP_GO_VERSION: ${{ inputs.go-version }}
+        READY_SETUP_GO_VERSION_FILE: ${{ inputs.go-version-file }}
+        READY_SETUP_GO_LATEST: ${{ inputs.check-latest }}
+        READY_SETUP_GO_SUMMARY: ${{ inputs.summary }}
+      run: 'source "$READY_SETUP_GO_ROOT/launch.sh" --cache=off'

@@ -1,0 +1,15 @@
+schema: spec-driven
+
+context: |
+  Read AGENTS.md and CONTRIBUTING.md before planning or implementing a change.
+  Read the existing documentation that owns the affected behavior, following
+  the document ownership guidance in AGENTS.md. These are file references to
+  read, not embedded copies of the repository's engineering guidance.
+
+rules:
+  proposal:
+    - State affected public behavior and any compatibility or migration implications.
+  specs:
+    - Specify observable requirements and scenarios; reference existing documentation instead of copying procedural or architectural detail.
+  tasks:
+    - Include the relevant checks required by CONTRIBUTING.md and distinguish local checks from native integration, hosted behavior, and performance evidence.

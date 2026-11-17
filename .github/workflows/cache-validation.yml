@@ -1,0 +1,196 @@
+name: Manual cache lifecycle validation
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: Repeat for all six native platforms
+        type: choice
+        options: [ubuntu-24.04, ubuntu-24.04-arm, macos-15-intel, macos-15, windows-2025, windows-11-arm]
+        default: ubuntu-24.04
+      go-version:
+        description: Exact toolchain version
+        default: '1.26.8'
+      scope:
+        description: Unique validation namespace; reuse on second dispatch to verify the first post-save
+        required: true
+        default: manual-cache-validation
+      expect-hit:
+        description: Enable on second dispatch after reviewing successful post-save in first run
+        type: boolean
+        default: false
+      expect-miss:
+        description: Assert no snapshot restored (use a fresh scope or branch-isolation probe)
+        type: boolean
+        default: false
+      expected-match:
+        description: Optional exact comma-separated matched keys from a reviewed seed probe
+        default: ''
+      mode:
+        description: Restore-only never registers post-save
+        type: choice
+        options: [restore-save, restore]
+        default: restore-save
+      outcome:
+        description: Failure is deliberate; cancel-wait requires manual cancellation after the workload
+        type: choice
+        options: [success, failure, cancel-wait]
+        default: success
+      save-on-failure:
+        description: Save after the deliberately failed workload; cancellation must always skip saving
+        type: boolean
+        default: false
+      layout:
+        type: choice
+        description: Archive layout to validate
+        options: [split, combined]
+        default: split
+      compression:
+        type: choice
+        description: Archive compression to validate
+        options: [gzip, zstd, none]
+        default: gzip
+      chunk-concurrency:
+        description: Parallel chunk workers, 1 through 16
+        default: '4'
+      compression-concurrency:
+        description: Whole-archive compression workers, 1 through 16
+        default: '4'
+      restore-concurrency:
+        description: Validated-file publication workers, 1 through 16
+        default: '4'
+      download-concurrency:
+        description: Parallel whole-archive download workers, 1 through 32
+        default: '4'
+      download-chunk-bytes:
+        description: Whole-archive download range bytes, 1 through 4194304000
+        default: '33554432'
+      storage:
+        type: choice
+        description: Whole archive or content-defined chunked snapshots
+        options: [archive, chunked]
+        default: archive
+      overlap:
+        type: boolean
+        description: Prefetch cache while the selected toolchain installs
+        default: true
+permissions:
+  contents: read
+jobs:
+  cache-validation:
+    if: >-
+      github.repository != 'nicoheidtke/ready-setup-go' || (github.actor == 'nicoheidtke' && github.triggering_actor == 'nicoheidtke')
+    name: cache-validation/${{ inputs.runner }}/${{ inputs.layout }}/${{ inputs.compression }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 30
+    env:
+      GOTOOLCHAIN: local
+      GOTELEMETRY: 'off'
+    steps:
+      - name: Validate probe assertions
+        shell: bash
+        env:
+          EXPECT_HIT: ${{ inputs.expect-hit }}
+          EXPECT_MISS: ${{ inputs.expect-miss }}
+        run: test "$EXPECT_HIT/$EXPECT_MISS" != true/true
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - name: Package native action without warming measured cache paths
+        shell: bash
+        env:
+          GOCACHE: ${{ runner.temp }}/bootstrap-build-cache
+          GOMODCACHE: ${{ runner.temp }}/bootstrap-module-cache
+        run: |
+          case "$RUNNER_OS" in Linux) platform=linux ;; macOS) platform=darwin ;; Windows) platform=windows ;; esac
+          case "$RUNNER_ARCH" in X64) arch=amd64 ;; ARM64) arch=arm64 ;; esac
+          go run ./cmd/package --platform "$platform/$arch"
+          mkdir -p cache-reports
+          echo "GOCACHE=$RUNNER_TEMP/validation-build-cache" >> "$GITHUB_ENV"
+          echo "GOMODCACHE=$RUNNER_TEMP/validation-module-cache" >> "$GITHUB_ENV"
+      - name: measure/restore-through-node-action
+        id: cache
+        uses: ./dist
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache: ${{ inputs.mode }}
+          cache-save-on-failure: ${{ inputs.save-on-failure }}
+          cache-scope: ${{ inputs.scope }}
+          cache-layout: ${{ inputs.layout }}
+          cache-chunk-concurrency: ${{ inputs.chunk-concurrency }}
+          cache-compression-concurrency: ${{ inputs.compression-concurrency }}
+          cache-restore-concurrency: ${{ inputs.restore-concurrency }}
+          cache-download-concurrency: ${{ inputs.download-concurrency }}
+          cache-download-chunk-bytes: ${{ inputs.download-chunk-bytes }}
+          cache-storage: ${{ inputs.storage }}
+          cache-overlap: ${{ inputs.overlap }}
+          cache-compression: ${{ inputs.compression }}
+          cache-strict: 'true'
+          cache-dependency-path: testdata/packages
+          cache-report: cache-reports/restore.json
+      - name: Record and assert restore provenance
+        env:
+          CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
+          CACHE_BYTES: ${{ steps.cache.outputs.cache-restored-bytes }}
+          CACHE_KEY: ${{ steps.cache.outputs.cache-key }}
+          MATCHED_KEY: ${{ steps.cache.outputs.cache-matched-key }}
+          EXPECT_HIT: ${{ inputs.expect-hit }}
+          EXPECT_MISS: ${{ inputs.expect-miss }}
+          EXPECTED_MATCH: ${{ inputs.expected-match }}
+          PROBE_MODE: ${{ inputs.mode }}
+          PROBE_STORAGE: ${{ inputs.storage }}
+          PROBE_SCOPE: ${{ inputs.scope }}
+          PROBE_OUTCOME: ${{ inputs.outcome }}
+          PROBE_SAVE_FAILURE: ${{ inputs.save-on-failure }}
+        run: |
+          node .github/scripts/cache-probe.cjs cache-reports/probe.json
+      - name: measure/pinned-package-workload
+        working-directory: testdata/packages
+        run: go test -mod=readonly -count=1 ./...
+      - name: Deliberately fail after populating caches
+        if: inputs.outcome == 'failure'
+        shell: bash
+        run: |
+          echo 'Deliberate policy probe failure; review the actual post step after completion.'
+          exit 1
+      - name: Wait for manual cancellation after populating caches
+        if: inputs.outcome == 'cancel-wait'
+        shell: bash
+        run: |
+          echo 'Cancel this run manually now; the action post-save must not run. No cancellation is automated.'
+          sleep 600
+          echo 'Not cancelled; probe inconclusive.'
+          exit 1
+      - uses: actions/upload-artifact@v7.0.2
+        if: always()
+        with:
+          name: cache-restore-report
+          # The .post.json report does not exist until normal steps finish.
+          path: |
+            cache-reports/restore.json
+            cache-reports/probe.json
+  report:
+    if: >-
+      (always()) &&
+      (github.repository != 'nicoheidtke/ready-setup-go' || (github.actor == 'nicoheidtke' && github.triggering_actor == 'nicoheidtke'))
+    needs: cache-validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - name: Collect completed job and real post-step timings
+        run: go run ./cmd/workflow-report --out cache-lifecycle-timings.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: cache-lifecycle-timings
+          path: cache-lifecycle-timings.json

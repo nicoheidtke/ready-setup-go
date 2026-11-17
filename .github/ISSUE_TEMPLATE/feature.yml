@@ -1,0 +1,27 @@
+name: Feature request
+description: Describe a workflow need or a proposed improvement.
+title: "Feature: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check the [roadmap](https://github.com/nicoheidtke/ready-setup-go/blob/main/ROADMAP.md) for existing plans. Use the [security policy](https://github.com/nicoheidtke/ready-setup-go/blob/main/SECURITY.md) for vulnerabilities. Keep credentials and private source out of examples.
+  - type: textarea
+    id: need
+    attributes:
+      label: Workflow need
+      description: Describe the task, affected platforms and what is difficult with the current action.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior and alternatives
+      description: Include a small example if useful. Explain compatibility or configuration implications and any alternatives considered.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Performance or resource evidence
+      description: Optional observations, transferred sizes or complete-job timings. Record workload/revisions and distinguish measurements from expectations; no benchmark is required to request a feature.

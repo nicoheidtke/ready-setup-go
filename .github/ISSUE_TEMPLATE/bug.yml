@@ -1,0 +1,38 @@
+name: Bug report
+description: Report unexpected installer or cache behavior.
+title: "Bug: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For vulnerabilities, follow [SECURITY.md](https://github.com/nicoheidtke/ready-setup-go/blob/main/SECURITY.md) instead. Remove tokens, signed URLs, private module names and source from workflows, logs and JSON reports. Public logs may expose machine data even when normal presentation is redacted.
+  - type: input
+    id: revision
+    attributes:
+      label: Bundled action revision
+      description: Full distribution SHA or release tag; source-only commits cannot run as an action.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Runner and Go version
+      description: OS/architecture, hosted image or self-hosted, selected Go version and Node runtime if known.
+      placeholder: windows-2025 / amd64, Go 1.26.4
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal workflow and reproduction
+      description: Include relevant action inputs and commands, plus cold/warm cache state and whether a rerun changes the result. Remove secrets and private repository details.
+      render: yaml
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual result
+      description: Explain the difference and include a small redacted log excerpt. A public run link is optional; do not publish private artifacts to provide one.
+    validations:
+      required: true

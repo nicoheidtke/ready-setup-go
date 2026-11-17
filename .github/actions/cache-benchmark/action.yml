@@ -1,0 +1,75 @@
+name: Run native cache benchmark
+description: Pass runner cache credentials to the native measurement helper without dependencies.
+inputs:
+  chunk-concurrency:
+    description: Parallel chunk workers, 1 through 16.
+    default: '4'
+  compression-concurrency:
+    description: Whole-archive compression workers, 1 through 16.
+    default: '4'
+  restore-concurrency:
+    description: Validated-file publication workers, 1 through 16.
+    default: '4'
+  storage:
+    description: Whole archive or content-defined chunked snapshots.
+    default: archive
+  helper:
+    description: Absolute compiled cache-benchmark executable path.
+    required: true
+  go:
+    description: Selected workload Go executable.
+    required: true
+  seed-go:
+    description: Seed Go executable for the upgrade scenario.
+    default: ''
+  source:
+    description: Package fixture directory or pinned Exasol checkout.
+    required: true
+  workload:
+    description: small, monorepo, exasol-build, exasol-test, exasol-lint.
+    default: small
+  scenario:
+    description: cold, unchanged, source, dependency, go-upgrade.
+    default: unchanged
+  samples:
+    description: Paired observations; at least 20 outside correctness mode.
+    default: '20'
+  mode:
+    description: Candidate restore or restore-save; baseline is always off.
+    default: restore-save
+  layout:
+    description: split or combined.
+    default: split
+  compression:
+    description: gzip, zstd, or none.
+    default: gzip
+  dependency:
+    description: Optional module@version shorthand for the controlled dependency change.
+    default: github.com/google/uuid@v1.5.0
+  max-bytes:
+    description: Uncompressed archive and transferred archive byte limit.
+    default: '10737418240'
+  upload-concurrency:
+    description: Parallel blob upload workers.
+    default: '4'
+  download-concurrency:
+    description: Parallel whole-archive download workers, 1 through 32.
+    default: '4'
+  download-chunk-bytes:
+    description: Whole-archive download range size in bytes.
+    default: '33554432'
+  upload-chunk-bytes:
+    description: Blob upload block size in bytes.
+    default: '33554432'
+  build-max-age:
+    description: Optional archive-only build cache age filter.
+    default: '0'
+  validation:
+    description: Correctness only; allows fewer samples without performance summaries.
+    default: 'false'
+  out:
+    description: JSON output path; command logs are written alongside it.
+    default: cache-reports/observations.json
+runs:
+  using: node24
+  main: run.cjs
