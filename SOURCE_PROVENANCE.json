@@ -1,0 +1,14 @@
+{
+  "revision": "b42afddd54c972fc08fffe11a7d473cf12921527",
+  "dirty": false,
+  "source_tree_sha256": "9d02bedc6c7c3b97b6657db710855df838849e3508080f93971246a59e0e0f88",
+  "compiler": "go version go1.27.1 linux/amd64",
+  "platforms": [
+    "linux/amd64",
+    "linux/arm64",
+    "darwin/amd64",
+    "darwin/arm64",
+    "windows/amd64",
+    "windows/arm64"
+  ]
+}

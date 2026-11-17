@@ -4,7 +4,7 @@ Set up Go in GitHub Actions and carry more of each build's work into the next ru
 
 Your code changes more often than your dependencies. `ready-setup-go` can save recent compiled results even when your dependencies stay the same, so later runs can reuse work from earlier builds and tests. It also keeps different jobs' caches separate and avoids uploading unchanged dependencies again.
 
-This is still a personal experiment, targeting **Go 1.26+** on Linux, macOS and Windows, amd64 and arm64. I haven't tested every scenario yet; the [validation status](docs/DEVELOPMENT.md#support-and-validation-status) explains what's covered. If you try it, I'd love to hear how it goes in [issues](https://github.com/nicoheidtke/ready-setup-go/issues).
+This is still a personal experiment, targeting **Go 1.26+** on Linux, macOS and Windows, amd64 and arm64. I haven't tested every scenario yet; the [validation status](https://github.com/nicoheidtke/ready-setup-go/blob/b42afddd54c972fc08fffe11a7d473cf12921527/docs/DEVELOPMENT.md#support-and-validation-status) explains what's covered. If you try it, I'd love to hear how it goes in [issues](https://github.com/nicoheidtke/ready-setup-go/issues).
 
 ## Quick start
 
@@ -58,7 +58,7 @@ Compression support comes bundled, so it doesn't depend on which archive tools y
 
 If the Go version you need is already installed, we reuse it. Otherwise, we download it from Go and verify it before installing. With either action, you don't need to compile the installer or run npm in your workflow.
 
-Go makes these choices practical, but using Go doesn't automatically make an action faster. What matters is how long your **whole job** takes, including cache uploads. If you're curious, the [architecture](docs/ARCHITECTURE.md) explains the internals and the [measurement guide](docs/BENCHMARKS.md) explains how to compare them.
+Go makes these choices practical, but using Go doesn't automatically make an action faster. What matters is how long your **whole job** takes, including cache uploads. If you're curious, the [architecture](docs/ARCHITECTURE.md) explains the internals and the [measurement guide](https://github.com/nicoheidtke/ready-setup-go/blob/b42afddd54c972fc08fffe11a7d473cf12921527/docs/BENCHMARKS.md) explains how to compare them.
 
 ## An anecdote from my day job
 
@@ -85,5 +85,5 @@ That's encouraging, but it's **not a controlled comparison**. The runs used diff
 - [Usage and input reference](docs/USAGE.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Architecture](docs/ARCHITECTURE.md) and [security model](docs/SECURITY_MODEL.md)
-- [Contributing](CONTRIBUTING.md), [development](docs/DEVELOPMENT.md), and [releases](docs/RELEASES.md)
-- [Security policy](SECURITY.md), [roadmap](ROADMAP.md), and [MIT license](LICENSE)
+- [Contributing](https://github.com/nicoheidtke/ready-setup-go/blob/b42afddd54c972fc08fffe11a7d473cf12921527/CONTRIBUTING.md), [development](https://github.com/nicoheidtke/ready-setup-go/blob/b42afddd54c972fc08fffe11a7d473cf12921527/docs/DEVELOPMENT.md), and [releases](https://github.com/nicoheidtke/ready-setup-go/blob/b42afddd54c972fc08fffe11a7d473cf12921527/docs/RELEASES.md)
+- [Security policy](SECURITY.md), [roadmap](https://github.com/nicoheidtke/ready-setup-go/blob/b42afddd54c972fc08fffe11a7d473cf12921527/ROADMAP.md), and [MIT license](LICENSE)

@@ -162,7 +162,7 @@ Enable [GitHub step debug logging](https://docs.github.com/en/actions/how-tos/mo
 
 `cache-report` retains preparation, lookup, transfer, archive times, payload/file counts, keys, matches, skips, and errors. Chunk reports include reuse counts/bytes. `match_type` distinguishes exact/compatible dependency matches; only `hit` establishes successful restoration. `restore_reason` explains misses/errors. JSON reports contain full paths/keys; review them before sharing, as described in the [security model](SECURITY_MODEL.md).
 
-Post saves occur after regular steps. An earlier artifact-upload step cannot collect `<cache-report>.post.json`; use completed debug logs or a later collector. See [measurement boundaries](BENCHMARKS.md#metric-boundaries) before interpreting phase timings or bytes.
+Post saves occur after regular steps. An earlier artifact-upload step cannot collect `<cache-report>.post.json`; use completed debug logs or a later collector. See [measurement boundaries](https://github.com/nicoheidtke/ready-setup-go/blob/b42afddd54c972fc08fffe11a7d473cf12921527/docs/BENCHMARKS.md#metric-boundaries) before interpreting phase timings or bytes.
 
 ## Action acquisition
 
