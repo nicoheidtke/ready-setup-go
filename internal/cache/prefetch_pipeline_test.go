@@ -193,8 +193,17 @@ func TestPrefetchPipelineCancellationJoinsIndependentDownloader(t *testing.T) {
 			default:
 				t.Fatal("merge returned before the cancelled download joined")
 			}
-			if len(got.report.Snapshots) != 2 || !got.report.Snapshots[0].Hit || got.report.Snapshots[1].Hit || got.report.Snapshots[1].Error == "" || got.report.SkippedReason != context.Canceled.Error() {
+			if len(got.report.Snapshots) != 2 || got.report.Snapshots[1].Hit || got.report.Snapshots[1].Error == "" || got.report.SkippedReason != context.Canceled.Error() {
 				t.Fatalf("cancellation lost partial outcomes: %+v", got.report)
+			}
+			// File visibility precedes the end of restore finalization. Cancellation
+			// can therefore leave the first snapshot either complete or cancelled
+			// after publication, especially during Windows missing-tree handling.
+			first := got.report.Snapshots[0]
+			if first.Kind != "modules" || first.PublishedFiles != 1 ||
+				(first.Hit && first.Error != "") || (!first.Hit && first.Error != context.Canceled.Error()) ||
+				restoring.Snapshots[0].DependencyMatch != first.Hit {
+				t.Fatalf("published snapshot lost its finalization outcome: %+v", first)
 			}
 			p.Close()
 			if _, err := os.Stat(partial); !errors.Is(err, os.ErrNotExist) {
