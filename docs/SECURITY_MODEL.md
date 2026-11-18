@@ -29,7 +29,7 @@ jobs:
     cache-mode: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: nicoheidtke/ready-setup-go@v1
+      - uses: nicoheidtke/ready-setup-go@v2
         with:
           go-version-file: go.mod
           cache: restore
@@ -66,7 +66,7 @@ Archive metadata has independent entry, path and extra-header budgets, described
 
 ## Cancellation and diagnostic data
 
-The automatic post condition excludes cancelled jobs and saves failed jobs only with `cache-save-on-failure: true`. In-process cancellation asks workers to stop and joins them before normal cleanup; a blocking filesystem call may still finish first. Abrupt process termination can leave local staging/state or remote uncommitted blobs; cleanup is best effort and remote expiry belongs to the service. The [validation guide](https://github.com/nicoheidtke/ready-setup-go/blob/b42afddd54c972fc08fffe11a7d473cf12921527/docs/DEVELOPMENT.md#validation) distinguishes local fixtures from unverified hosted policy cases.
+The automatic post condition excludes cancelled jobs and saves failed jobs only with `cache-save-on-failure: true`. In-process cancellation asks workers to stop and joins them before normal cleanup; a blocking filesystem call may still finish first. Abrupt process termination can leave local staging/state or remote uncommitted blobs; cleanup is best effort and remote expiry belongs to the service. The [validation guide](https://github.com/nicoheidtke/ready-setup-go/blob/6292322980f8fa1b2505745667b57b17ce8b658e/docs/DEVELOPMENT.md#validation) distinguishes local fixtures from unverified hosted policy cases.
 
 Runtime bearer credentials authenticate cache control requests only; signed URLs authenticate blob transfers without a bearer header. Neither is written into private post state. Post state does contain configuration, cache paths, keys, content identities and bounded verified chunk hash/size hints, and runs under the same runner account as other job processes. It is not a secret store or a boundary against malicious code in that job.
 

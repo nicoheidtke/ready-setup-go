@@ -1,14 +1,16 @@
 # ready-setup-go
 
-Set up Go in GitHub Actions and carry more of each build's work into the next run.
+Set up Go in GitHub Actions with reusable dependency baselines and configurable cache refreshes.
 
-Your code changes more often than your dependencies. `ready-setup-go` can save recent compiled results even when your dependencies stay the same, so later runs can reuse work from earlier builds and tests. It also keeps different jobs' caches separate and avoids uploading unchanged dependencies again.
+Your code changes more often than your dependencies. With caching enabled, the default policy saves a baseline on the default branch and skips uploads after matching dependency restores. Other branches reuse that baseline. You can enable branch-local saves and more frequent refreshes when retaining recent compiled results is worth the upload cost. Different jobs keep separate build caches.
 
-This is still a personal experiment, targeting **Go 1.26+** on Linux, macOS and Windows, amd64 and arm64. I haven't tested every scenario yet; the [validation status](https://github.com/nicoheidtke/ready-setup-go/blob/b42afddd54c972fc08fffe11a7d473cf12921527/docs/DEVELOPMENT.md#support-and-validation-status) explains what's covered. If you try it, I'd love to hear how it goes in [issues](https://github.com/nicoheidtke/ready-setup-go/issues).
+This is still a personal experiment, targeting **Go 1.26+** on Linux, macOS and Windows, amd64 and arm64. I haven't tested every scenario yet; the [validation status](https://github.com/nicoheidtke/ready-setup-go/blob/6292322980f8fa1b2505745667b57b17ce8b658e/docs/DEVELOPMENT.md#support-and-validation-status) explains what's covered. If you try it, I'd love to hear how it goes in [issues](https://github.com/nicoheidtke/ready-setup-go/issues).
 
 ## Quick start
 
 Caching is **off by default**. Here's how to turn it on:
+
+Version 2 changes the enabled-cache save defaults. Existing v1 pins keep their previous behavior; see the [short migration guide](https://github.com/nicoheidtke/ready-setup-go/blob/6292322980f8fa1b2505745667b57b17ce8b658e/docs/RELEASES.md#baseline-cache-policy-migration).
 
 ```yaml
 permissions:
@@ -18,7 +20,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: nicoheidtke/ready-setup-go@v1
+      - uses: nicoheidtke/ready-setup-go@v2
         with:
           go-version-file: go.mod
           cache: restore-save
@@ -33,10 +35,10 @@ Both actions install Go and can save dependencies and compiled results for later
 
 | What matters | `actions/setup-go` built-in caching | `ready-setup-go` |
 | --- | --- | --- |
-| Keeping recent build results | Skips saving after restoring an exact cache match. | Can save recent build results even when dependencies haven't changed. |
-| Saving dependencies | Downloaded dependencies and compiled results are saved together. | Saves them separately by default; unchanged dependencies aren't uploaded again. |
+| Keeping recent build results | Skips saving after restoring an exact cache match. | Skips matching dependency baselines by default; opt into fresh build snapshots with `cache-save-policy: always`. |
+| Saving dependencies | Downloaded dependencies and compiled results are saved together. | Saves them separately by default, with independent baseline decisions. |
 | Different jobs | Matching Go, runner and dependency settings share a cache. | Build and test jobs retain their own useful work in separate caches. |
-| Choosing when to upload | Caching is on by default, with automatic saves on cache misses. | Off by default; choose restore-only, restore-and-save, or less frequent build saves. |
+| Choosing when to upload | Caching is on by default, with automatic saves on cache misses. | Off by default; enabled caching seeds misses on the default branch. Branch writers and refresh frequency are configurable. |
 | Multiple Go modules | Configure dependency paths for modules outside the repository root. | Finds module and workspace dependency files throughout the repository by default. |
 
 If you use a matrix, set `cache-scope` to keep variants such as race and ordinary tests separate. If you only want to restore caches without uploading anything, use `cache: restore`. The [usage guide](docs/USAGE.md) has more examples.
@@ -58,7 +60,7 @@ Compression support comes bundled, so it doesn't depend on which archive tools y
 
 If the Go version you need is already installed, we reuse it. Otherwise, we download it from Go and verify it before installing. With either action, you don't need to compile the installer or run npm in your workflow.
 
-Go makes these choices practical, but using Go doesn't automatically make an action faster. What matters is how long your **whole job** takes, including cache uploads. If you're curious, the [architecture](docs/ARCHITECTURE.md) explains the internals and the [measurement guide](https://github.com/nicoheidtke/ready-setup-go/blob/b42afddd54c972fc08fffe11a7d473cf12921527/docs/BENCHMARKS.md) explains how to compare them.
+Go makes these choices practical, but using Go doesn't automatically make an action faster. What matters is how long your **whole job** takes, including cache uploads. If you're curious, the [architecture](docs/ARCHITECTURE.md) explains the internals and the [measurement guide](https://github.com/nicoheidtke/ready-setup-go/blob/6292322980f8fa1b2505745667b57b17ce8b658e/docs/BENCHMARKS.md) explains how to compare them.
 
 ## An anecdote from my day job
 
@@ -85,5 +87,5 @@ That's encouraging, but it's **not a controlled comparison**. The runs used diff
 - [Usage and input reference](docs/USAGE.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Architecture](docs/ARCHITECTURE.md) and [security model](docs/SECURITY_MODEL.md)
-- [Contributing](https://github.com/nicoheidtke/ready-setup-go/blob/b42afddd54c972fc08fffe11a7d473cf12921527/CONTRIBUTING.md), [development](https://github.com/nicoheidtke/ready-setup-go/blob/b42afddd54c972fc08fffe11a7d473cf12921527/docs/DEVELOPMENT.md), and [releases](https://github.com/nicoheidtke/ready-setup-go/blob/b42afddd54c972fc08fffe11a7d473cf12921527/docs/RELEASES.md)
-- [Security policy](SECURITY.md), [roadmap](https://github.com/nicoheidtke/ready-setup-go/blob/b42afddd54c972fc08fffe11a7d473cf12921527/ROADMAP.md), and [MIT license](LICENSE)
+- [Contributing](https://github.com/nicoheidtke/ready-setup-go/blob/6292322980f8fa1b2505745667b57b17ce8b658e/CONTRIBUTING.md), [development](https://github.com/nicoheidtke/ready-setup-go/blob/6292322980f8fa1b2505745667b57b17ce8b658e/docs/DEVELOPMENT.md), and [releases](https://github.com/nicoheidtke/ready-setup-go/blob/6292322980f8fa1b2505745667b57b17ce8b658e/docs/RELEASES.md)
+- [Security policy](SECURITY.md), [roadmap](https://github.com/nicoheidtke/ready-setup-go/blob/6292322980f8fa1b2505745667b57b17ce8b658e/ROADMAP.md), and [MIT license](LICENSE)
