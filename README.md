@@ -4,13 +4,13 @@ Set up Go in GitHub Actions with reusable dependency baselines and configurable 
 
 Your code changes more often than your dependencies. With caching enabled, the default policy saves a baseline on the default branch and skips uploads after matching dependency restores. Other branches reuse that baseline. You can enable branch-local saves and more frequent refreshes when retaining recent compiled results is worth the upload cost. Different jobs keep separate build caches.
 
-This is still a personal experiment, targeting **Go 1.26+** on Linux, macOS and Windows, amd64 and arm64. I haven't tested every scenario yet; the [validation status](https://github.com/nicoheidtke/ready-setup-go/blob/6292322980f8fa1b2505745667b57b17ce8b658e/docs/DEVELOPMENT.md#support-and-validation-status) explains what's covered. If you try it, I'd love to hear how it goes in [issues](https://github.com/nicoheidtke/ready-setup-go/issues).
+This is still a personal experiment, targeting **Go 1.26+** on Linux, macOS and Windows, amd64 and arm64. I haven't tested every scenario yet; the [validation status](https://github.com/nicoheidtke/ready-setup-go/blob/fe5d75d54cb3e62a1e95656e3f511cc30fbbfe89/docs/DEVELOPMENT.md#support-and-validation-status) explains what's covered. If you try it, I'd love to hear how it goes in [issues](https://github.com/nicoheidtke/ready-setup-go/issues).
 
 ## Quick start
 
 Caching is **off by default**. Here's how to turn it on:
 
-Version 2 changes the enabled-cache save defaults. Existing v1 pins keep their previous behavior; see the [short migration guide](https://github.com/nicoheidtke/ready-setup-go/blob/6292322980f8fa1b2505745667b57b17ce8b658e/docs/RELEASES.md#baseline-cache-policy-migration).
+Version 2 changes the enabled-cache save defaults. Existing v1 pins keep their previous behavior; see the [short migration guide](https://github.com/nicoheidtke/ready-setup-go/blob/fe5d75d54cb3e62a1e95656e3f511cc30fbbfe89/docs/RELEASES.md#baseline-cache-policy-migration).
 
 ```yaml
 permissions:
@@ -60,7 +60,7 @@ Compression support comes bundled, so it doesn't depend on which archive tools y
 
 If the Go version you need is already installed, we reuse it. Otherwise, we download it from Go and verify it before installing. With either action, you don't need to compile the installer or run npm in your workflow.
 
-Go makes these choices practical, but using Go doesn't automatically make an action faster. What matters is how long your **whole job** takes, including cache uploads. If you're curious, the [architecture](docs/ARCHITECTURE.md) explains the internals and the [measurement guide](https://github.com/nicoheidtke/ready-setup-go/blob/6292322980f8fa1b2505745667b57b17ce8b658e/docs/BENCHMARKS.md) explains how to compare them.
+Go makes these choices practical, but using Go doesn't automatically make an action faster. What matters is how long your **whole job** takes, including cache uploads. If you're curious, the [architecture](docs/ARCHITECTURE.md) explains the internals and the [measurement guide](https://github.com/nicoheidtke/ready-setup-go/blob/fe5d75d54cb3e62a1e95656e3f511cc30fbbfe89/docs/BENCHMARKS.md) explains how to compare them.
 
 ## An anecdote from my day job
 
@@ -87,5 +87,5 @@ That's encouraging, but it's **not a controlled comparison**. The runs used diff
 - [Usage and input reference](docs/USAGE.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Architecture](docs/ARCHITECTURE.md) and [security model](docs/SECURITY_MODEL.md)
-- [Contributing](https://github.com/nicoheidtke/ready-setup-go/blob/6292322980f8fa1b2505745667b57b17ce8b658e/CONTRIBUTING.md), [development](https://github.com/nicoheidtke/ready-setup-go/blob/6292322980f8fa1b2505745667b57b17ce8b658e/docs/DEVELOPMENT.md), and [releases](https://github.com/nicoheidtke/ready-setup-go/blob/6292322980f8fa1b2505745667b57b17ce8b658e/docs/RELEASES.md)
-- [Security policy](SECURITY.md), [roadmap](https://github.com/nicoheidtke/ready-setup-go/blob/6292322980f8fa1b2505745667b57b17ce8b658e/ROADMAP.md), and [MIT license](LICENSE)
+- [Contributing](https://github.com/nicoheidtke/ready-setup-go/blob/fe5d75d54cb3e62a1e95656e3f511cc30fbbfe89/CONTRIBUTING.md), [development](https://github.com/nicoheidtke/ready-setup-go/blob/fe5d75d54cb3e62a1e95656e3f511cc30fbbfe89/docs/DEVELOPMENT.md), and [releases](https://github.com/nicoheidtke/ready-setup-go/blob/fe5d75d54cb3e62a1e95656e3f511cc30fbbfe89/docs/RELEASES.md)
+- [Security policy](SECURITY.md), [roadmap](https://github.com/nicoheidtke/ready-setup-go/blob/fe5d75d54cb3e62a1e95656e3f511cc30fbbfe89/ROADMAP.md), and [MIT license](LICENSE)

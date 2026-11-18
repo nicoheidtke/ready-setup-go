@@ -2,7 +2,7 @@
 
 Start with the setup logs and the action's separate **Post …** step after regular job steps finish. With summaries enabled, the job summary has separate toolchain, restore, and save results. A restore hit or a printed save key does not prove that post saved a snapshot; check its final `SAVED`, `SKIP`, or `ERROR` result.
 
-This guide describes current source behavior. The [release provenance](https://github.com/nicoheidtke/ready-setup-go/blob/6292322980f8fa1b2505745667b57b17ce8b658e/docs/DEVELOPMENT.md#release-provenance) has its own immutable source revision; newer diagnostic categories and safety limits require a newly packaged distribution. See [usage](USAGE.md) for input defaults and supported entrypoints.
+This guide describes current source behavior. The [release provenance](https://github.com/nicoheidtke/ready-setup-go/blob/fe5d75d54cb3e62a1e95656e3f511cc30fbbfe89/docs/DEVELOPMENT.md#release-provenance) has its own immutable source revision; newer diagnostic categories and safety limits require a newly packaged distribution. See [usage](USAGE.md) for input defaults and supported entrypoints.
 
 ## Find the symptom
 
@@ -28,7 +28,7 @@ Normal logs identify each snapshot's result, reason, transferred bytes, lookup/m
 
 If `cache-report` is configured, setup writes the restore report and post writes `<cache-report>.post.json`. Regular artifact-upload steps run before post, so they cannot collect that later save report. Inspect completed post logs/debug output or arrange a later collector; an absent post report in an earlier artifact is not evidence of a failed save. Requested save keys are not evidence of publication.
 
-Use [metric boundaries](https://github.com/nicoheidtke/ready-setup-go/blob/6292322980f8fa1b2505745667b57b17ce8b658e/docs/BENCHMARKS.md#metric-boundaries) when investigating elapsed time. Preparation is separate from restore totals, toolchain and prefetch work can overlap, and native phase sums do not equal complete workflow time. Compare acquisition, setup, workload and post together before changing a performance setting.
+Use [metric boundaries](https://github.com/nicoheidtke/ready-setup-go/blob/fe5d75d54cb3e62a1e95656e3f511cc30fbbfe89/docs/BENCHMARKS.md#metric-boundaries) when investigating elapsed time. Preparation is separate from restore totals, toolchain and prefetch work can overlap, and native phase sums do not equal complete workflow time. Compare acquisition, setup, workload and post together before changing a performance setting.
 
 ## Share a useful reproduction
 

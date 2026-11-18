@@ -1,7 +1,7 @@
 {
-  "revision": "6292322980f8fa1b2505745667b57b17ce8b658e",
+  "revision": "fe5d75d54cb3e62a1e95656e3f511cc30fbbfe89",
   "dirty": false,
-  "source_tree_sha256": "9fdf8a1e7f8e52572711ab4a6cee7a8a8378e6cb21ca7312b69b321674d9e1ad",
+  "source_tree_sha256": "2823033eb6960d3c94c46488576d595f7c0c8f3f89277d94284c3ed39fe21f82",
   "compiler": "go version go1.27.1 linux/amd64",
   "platforms": [
     "linux/amd64",

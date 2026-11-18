@@ -8,4 +8,4 @@ Report vulnerabilities through [GitHub private vulnerability reporting](https://
 
 Security fixes target the latest published bundled prerelease. There is no stable or long-term support line, and no backport or response-time commitment. Fixes are delivered in a new distribution revision; SHA-pinned consumers must update explicitly.
 
-See the [support and validation limits](https://github.com/nicoheidtke/ready-setup-go/blob/6292322980f8fa1b2505745667b57b17ce8b658e/docs/DEVELOPMENT.md#support-and-validation-status) for platform coverage and the [security model](docs/SECURITY_MODEL.md) for permissions, cache trust, persistent runners, and diagnostic privacy.
+See the [support and validation limits](https://github.com/nicoheidtke/ready-setup-go/blob/fe5d75d54cb3e62a1e95656e3f511cc30fbbfe89/docs/DEVELOPMENT.md#support-and-validation-status) for platform coverage and the [security model](docs/SECURITY_MODEL.md) for permissions, cache trust, persistent runners, and diagnostic privacy.

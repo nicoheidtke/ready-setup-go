@@ -6,7 +6,7 @@ Return to the [project overview](../README.md), see the [comparison with setup-g
 
 Examples use the `v2` major version tag. It follows compatible releases. For a fixed revision, use the full distribution SHA from the [release notes](https://github.com/nicoheidtke/ready-setup-go/releases); source commits do not contain the packaged action.
 
-Version 2 introduces the baseline save policies described below. Existing v1 pins retain their previous behavior. See the [short migration guide](https://github.com/nicoheidtke/ready-setup-go/blob/6292322980f8fa1b2505745667b57b17ce8b658e/docs/RELEASES.md#baseline-cache-policy-migration).
+Version 2 introduces the baseline save policies described below. Existing v1 pins retain their previous behavior. See the [short migration guide](https://github.com/nicoheidtke/ready-setup-go/blob/fe5d75d54cb3e62a1e95656e3f511cc30fbbfe89/docs/RELEASES.md#baseline-cache-policy-migration).
 
 ```yaml
 permissions:
@@ -170,7 +170,7 @@ Enable [GitHub step debug logging](https://docs.github.com/en/actions/how-tos/mo
 
 `cache-report` retains preparation, lookup, transfer, archive times, payload/file counts, keys, matches, skips, and errors. Chunk reports include reuse counts/bytes. `match_type` distinguishes exact/compatible dependency matches; only `hit` establishes successful restoration. `restore_reason` explains misses/errors. JSON reports contain full paths/keys; review them before sharing, as described in the [security model](SECURITY_MODEL.md).
 
-Post saves occur after regular steps. An earlier artifact-upload step cannot collect `<cache-report>.post.json`; use completed debug logs or a later collector. See [measurement boundaries](https://github.com/nicoheidtke/ready-setup-go/blob/6292322980f8fa1b2505745667b57b17ce8b658e/docs/BENCHMARKS.md#metric-boundaries) before interpreting phase timings or bytes.
+Post saves occur after regular steps. An earlier artifact-upload step cannot collect `<cache-report>.post.json`; use completed debug logs or a later collector. See [measurement boundaries](https://github.com/nicoheidtke/ready-setup-go/blob/fe5d75d54cb3e62a1e95656e3f511cc30fbbfe89/docs/BENCHMARKS.md#metric-boundaries) before interpreting phase timings or bytes.
 
 ## Action acquisition
 
