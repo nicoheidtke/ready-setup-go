@@ -70,6 +70,8 @@ func snapshotResult(phase string, m Metric) (status, reason string) {
 	}
 	if m.Skipped {
 		switch m.SaveReason {
+		case "dependency-match":
+			return "SKIP", "matching dependency baseline restored"
 		case "unchanged-module-content":
 			return "SKIP", "module content unchanged"
 		case "build-save-disabled":

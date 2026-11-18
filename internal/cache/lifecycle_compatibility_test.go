@@ -49,6 +49,7 @@ func TestLifecycleAccessModesDoNotEscalateRunnerPolicy(t *testing.T) {
 					}
 					c := DefaultConfig()
 					c.Mode, c.Overlap, c.Strict = mode, overlap, true
+					c.SaveBranches = "all" // Exercise runner policy independently of branch policy.
 					pending := BeginPrefetch(context.Background(), c, "1.26.8")
 					defer pending.Close()
 					if err := StartPrefetched(context.Background(), c, "1.26.8", runtime.GOROOT(), pending); err != nil {

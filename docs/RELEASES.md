@@ -39,7 +39,32 @@ No temporary source branch or branch rewind is needed to select an older commit.
 
 ## Versions, aliases, and latest
 
-Full version tags such as `v1.4.2` identify exact packaged distributions. `dist` is generated output history; never edit it manually or use it as a consumer pin. Major/minor tags are convenience aliases. Documentation can keep using `v1` through compatible patch/minor releases; users needing fixed bytes use the full distribution SHA recorded with each release.
+Full version tags such as `v2.0.0` identify exact packaged distributions. `dist` is generated output history; never edit it manually or use it as a consumer pin. Major/minor tags are convenience aliases. Examples use `v2`; existing `v1` pins remain on the v1 line. Users needing fixed bytes use the full distribution SHA recorded with each release.
+
+### Baseline cache policy migration
+
+Version 2 changes the save defaults for enabled caching. Change `@v1` (or your v1 distribution SHA) to `@v2` or the full v2 distribution SHA in the release notes:
+
+```yaml
+- uses: nicoheidtke/ready-setup-go@v2
+  with:
+    go-version-file: go.mod
+    cache: restore-save
+```
+
+New invocations retain `cache: off` unless enabled. With `cache: restore-save`, omitted save inputs now mean `cache-save-policy: on-miss` and `cache-save-branches: default`. Other refs restore without writing, and matching dependency snapshots skip all save work. Source-only edits do not refresh compiled results. Existing cache namespaces and archive formats remain compatible; historical matching snapshots can serve as baselines without clearing caches.
+
+To preserve the previous writer and refresh behavior with the new distribution:
+
+```yaml
+cache: restore-save
+cache-save-policy: always
+cache-save-branches: all
+```
+
+For long-lived branch baselines, set only `cache-save-branches: all`. For fresh build results after source-only edits, set `cache-save-policy: always`; add `all` if those branches should write too. Existing build-save opt-outs and runner permissions still apply. Compatible serialized state from an older main lacking the new fields retains legacy behavior in post. No cache clearing or additional permissions are required. Cache-off and restore-only workflows retain their behavior.
+
+### Alias and latest policy
 
 **update_aliases** advances each eligible series independently. For example:
 

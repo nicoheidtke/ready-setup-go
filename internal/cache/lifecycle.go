@@ -135,12 +135,18 @@ func StartPrefetched(ctx context.Context, c Config, version, toolchain string, p
 	r.PreparationMS = preparationMS
 	r.PrefetchWaitMS = waitMS
 	savePolicy := "Post-job save requested; save results appear in the post-job summary."
+	branchSkip := ""
+	if c.Mode == "restore-save" && write {
+		branchSkip = saveBranchSkip(c)
+	}
 	if c.Mode == "restore" {
 		savePolicy = "Post-job save disabled: restore-only mode."
 	} else if !write {
 		savePolicy = "Post-job save disabled: runner cache policy denies writes."
 	} else if restoreErr != nil {
 		savePolicy = "Post-job save unavailable because strict restore failed."
+	} else if branchSkip != "" {
+		savePolicy = "Post-job save disabled: " + branchSkip + "."
 	}
 	summaryReport(c, r, savePolicy)
 	hit := len(r.Snapshots) > 0
@@ -165,9 +171,11 @@ func StartPrefetched(ctx context.Context, c Config, version, toolchain string, p
 	if restoreErr != nil {
 		return restoreErr
 	}
-	if c.Mode != "restore-save" || !write {
+	if c.Mode != "restore-save" || !write || branchSkip != "" {
 		if c.Mode == "restore" {
 			actionlog.Default.Printf("Cache save SKIP · restore-only mode\n")
+		} else if branchSkip != "" {
+			actionlog.Default.Printf("Cache save SKIP · %s\n", branchSkip)
 		} else {
 			actionlog.Default.Printf("Cache save SKIP · runner cache policy denies writes\n")
 		}
@@ -245,10 +253,25 @@ func Post(ctx context.Context) error {
 		}
 		return nil
 	}
-	backend, err := newBackend(s.Config)
-	if err != nil {
-		summaryReport(s.Config, Report{Phase: "save", SkippedReason: err.Error()}, "")
-		return failure(s.Config, err)
+	if reason := saveBranchSkip(s.Config); reason != "" {
+		r := Report{Phase: "save", SkippedReason: reason}
+		summaryReport(s.Config, r, "")
+		if err := writeReport(postReportPath(s.Config.Report), r); err != nil {
+			return failure(s.Config, err)
+		}
+		return nil
+	}
+	var backend Backend
+	for _, snap := range s.Snapshots {
+		if snapshotSaveSkip(s.Config, snap) != "" {
+			continue
+		}
+		backend, err = newBackend(s.Config)
+		if err != nil {
+			summaryReport(s.Config, Report{Phase: "save", SkippedReason: err.Error()}, "")
+			return failure(s.Config, err)
+		}
+		break
 	}
 	r, saveErr := Save(ctx, backend, s)
 	summaryReport(s.Config, r, "")

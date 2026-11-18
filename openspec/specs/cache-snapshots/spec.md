@@ -51,41 +51,41 @@ Enabled caching SHALL query `GOCACHE` and `GOMODCACHE` from the selected install
 
 ### Requirement: Unchanged restored modules skip packing and upload
 
-For split module snapshots with a successful restored-content baseline, save SHALL compare current paths, permissions, and complete file contents with the restored snapshot before packing. Unchanged modules SHALL skip packing and upload even when timestamps differ. Same-size content changes or differing retained local contents SHALL count as changes. Combined snapshots SHALL NOT use this module-only skip rule.
+In always mode, split module snapshots with a restored-content baseline SHALL compare paths, permissions and complete contents before packing. Unchanged modules SHALL skip packing and upload despite timestamp changes. Same-size content changes and differing retained local contents SHALL count as changes. Combined snapshots SHALL NOT use this optimization. On-miss SHALL use dependency-match outcomes without module content checks.
 
 #### Scenario: Only module timestamps change
 
-- **WHEN** restored split module paths, permissions, and file contents are unchanged but timestamps differ
+- **WHEN** always mode restores split module paths, permissions and contents that remain unchanged except timestamps
 - **THEN** module save skips packing and upload
 
 #### Scenario: Module content changes without size change
 
-- **WHEN** a restored module file is replaced with different content of the same size
+- **WHEN** always mode replaces a restored module file with different content of the same size
 - **THEN** module save detects the change and considers the snapshot for publication
 
 #### Scenario: Preserved local module differs from restored content
 
-- **WHEN** restoration preserves an existing local module file whose contents differ from the archived file
+- **WHEN** always-mode restoration preserves an existing local module file whose contents differ from the archived file
 - **THEN** the later module comparison treats the local tree as changed from the restored baseline
 
 #### Scenario: Modules were not restored
 
 - **WHEN** an eligible split module snapshot has no successful restored baseline
-- **THEN** the absence of a baseline does not itself suppress packing or saving nonempty contents
+- **THEN** absence of that baseline does not suppress packing or saving nonempty contents
 
 ### Requirement: Build saves refresh eligible nonempty snapshots
 
-`cache-build-save` SHALL default to true. With build saving enabled, eligible nonempty build snapshots SHALL be considered for a fresh save even after a restore hit, without inferring unchanged builds from matching dependencies. In split layout, false SHALL skip build packing and upload before accessing the build root, without suppressing restores or module saves. False with combined layout SHALL fail validation.
+`cache-build-save` SHALL default to true. Enabled build saves SHALL follow cache-save-policy: on-miss seeds missing dependency baselines; always considers fresh nonempty snapshots after hits. In split layout, false SHALL skip build packing and upload before accessing the build root, without suppressing restores or otherwise eligible module saves. False with combined layout SHALL fail validation.
 
 #### Scenario: Build restore hit with default save policy
 
-- **WHEN** an eligible job restored build contents and later has a nonempty build snapshot
-- **THEN** a fresh build save is considered even when dependency inputs are unchanged
+- **WHEN** an eligible job restores build contents matching current dependencies under the default save policy
+- **THEN** build save skips local snapshot access, packing and upload
 
 #### Scenario: Build saving disabled on a cold miss
 
 - **WHEN** cache-build-save is false in split layout and no build snapshot restored
-- **THEN** build packing and upload are skipped while restore behavior and changed-module saving remain enabled
+- **THEN** build packing and upload are skipped while restore behavior and otherwise eligible module saving remain enabled
 
 #### Scenario: Disabled build root is unavailable
 
@@ -134,3 +134,32 @@ An eligible snapshot containing no regular files after applicable filtering SHAL
 
 - **WHEN** cache-build-max-age is malformed or negative
 - **THEN** setup rejects the configuration
+
+### Requirement: Dependency baseline saves avoid exact-match work
+
+`cache-save-policy` SHALL default to `on-miss` and accept `on-miss` or `always`. On-miss SHALL skip snapshot scanning, fingerprinting, packing and upload after successfully restoring a snapshot matching the current dependency fingerprint. A compatible fallback, absent entry or failed restore SHALL NOT suppress a baseline save. Split snapshots SHALL decide independently; combined snapshots SHALL apply the same rule. Invalid policies SHALL fail validation.
+
+#### Scenario: Matching baseline restored
+
+- **WHEN** an on-miss snapshot restores successfully for the current dependency fingerprint
+- **THEN** save skips all local snapshot access and upload even if source or local cache contents changed
+
+#### Scenario: Changed dependencies restore a compatible baseline
+
+- **WHEN** an eligible on-miss writer restores a snapshot for an older dependency fingerprint
+- **THEN** it saves a nonempty baseline for the current fingerprint, including when restored module contents remain unchanged
+
+#### Scenario: Independent split outcomes
+
+- **WHEN** modules match current dependencies and the build snapshot misses
+- **THEN** module save skips work and the build snapshot remains eligible for seeding
+
+#### Scenario: Invalid or evicted snapshot
+
+- **WHEN** lookup finds a matching snapshot but validation fails or a required chunk is missing
+- **THEN** the lookup alone does not suppress a later otherwise eligible baseline save
+
+#### Scenario: Always refresh is explicit
+
+- **WHEN** cache-save-policy is always
+- **THEN** eligible builds refresh after hits and split modules retain their unchanged-content optimization

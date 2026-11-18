@@ -31,6 +31,8 @@ Select Node 24 with `--node` and Bash with `--shell`. Subprocess timing includes
 
 Cache benchmarks need injected runtime credentials. `--validation` permits fewer correctness observations without a complete performance summary. Synchronous restore/save captures both reports before artifact upload but excludes runner post dispatch and installation/prefetch overlap. The helper creates remote entries and does not delete them.
 
+`cmd/cache-benchmark --save-policy on-miss` uses dependency baselines; select `always` to measure refresh costs. The synchronous helper explicitly permits its isolated sample writes (`save_branches: all`); it does not test default-branch eligibility. Use packaged main/post fixtures and hosted branch probes for that boundary. Record the selected policy when comparing results from older versions that refreshed builds by default.
+
 Exasol is one acceptance workload. Preserve its build/test/lint split, generation, and warmup. The harness excludes separate tool-cache lifecycle, Python/integration/deployment work, and runner post dispatch; optional tool-initialization outcomes remain in raw records. It is not a complete upstream-pipeline comparison. `workload.yml` checks installer correctness, not speed.
 
 ## Metric boundaries

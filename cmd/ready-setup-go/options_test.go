@@ -74,6 +74,7 @@ func parsedInputs(o setupOptions) map[string]string {
 	return map[string]string{
 		"go-version": o.Version, "go-version-file": o.VersionFile, "check-latest": strconv.FormatBool(o.CheckLatest),
 		"summary": strconv.FormatBool(!c.DisableSummary), "cache": c.Mode, "cache-scope": c.Scope,
+		"cache-save-policy": c.SavePolicy, "cache-save-branches": c.SaveBranches,
 		"cache-module-scope": c.ModuleScope, "cache-gzip-level": level, "cache-layout": c.Layout,
 		"cache-storage": c.Storage, "cache-overlap": strconv.FormatBool(c.Overlap), "cache-compression": c.Compression,
 		"cache-dependency-path": c.DependencyPaths, "cache-build-save": strconv.FormatBool(!c.DisableBuildSave),
@@ -126,6 +127,7 @@ func TestSetupInputSourcesAndOverrides(t *testing.T) {
 		"cache": "restore-save", "cache-scope": "test variant", "cache-module-scope": "trusted modules", "cache-gzip-level": "1",
 		"cache-layout": "combined", "cache-storage": "chunked", "cache-overlap": "false", "cache-compression": "zstd",
 		"cache-dependency-path": "first/go.mod\nsecond/go.sum", "cache-build-save": "false", "cache-build-max-age": "2h0m0s",
+		"cache-save-policy": "always", "cache-save-branches": "all",
 		"cache-max-bytes": "12345", "cache-strict": "true", "cache-chunk-concurrency": "2", "cache-compression-concurrency": "3",
 		"cache-restore-concurrency": "5", "cache-upload-concurrency": "6", "cache-download-concurrency": "7",
 		"cache-upload-chunk-bytes": "1024", "cache-download-chunk-bytes": "2048", "cache-save-on-failure": "true", "cache-report": "report with spaces.json",
@@ -171,7 +173,7 @@ func TestSetupInputSourcesAndOverrides(t *testing.T) {
 }
 
 func TestSetupInvalidEnvironmentCanBeOverridden(t *testing.T) {
-	for _, name := range []string{"summary", "cache-build-save", "cache-overlap", "cache-strict", "cache-save-on-failure", "cache-max-bytes", "cache-build-max-age", "cache-upload-concurrency", "cache-gzip-level"} {
+	for _, name := range []string{"summary", "cache-build-save", "cache-overlap", "cache-strict", "cache-save-on-failure", "cache-save-policy", "cache-save-branches", "cache-max-bytes", "cache-build-max-age", "cache-upload-concurrency", "cache-gzip-level"} {
 		t.Run(name, func(t *testing.T) {
 			env := func(key string) string {
 				if key == "INPUT_"+strings.ToUpper(name) {
@@ -190,5 +192,13 @@ func TestSetupInvalidEnvironmentCanBeOverridden(t *testing.T) {
 	o, _, err := parseSetupOptions([]string{"--json=report with spaces.json"}, func(string) string { return "" })
 	if err != nil || o.Report != "report with spaces.json" {
 		t.Fatalf("standalone report changed: %+v, %v", o, err)
+	}
+}
+
+func TestSetupRejectsEmptySavePolicies(t *testing.T) {
+	for _, name := range []string{"cache-save-policy", "cache-save-branches"} {
+		if _, _, err := parseSetupOptions([]string{"--" + name + "="}, func(string) string { return "" }); err == nil {
+			t.Fatal("empty policy accepted", name)
+		}
 	}
 }

@@ -19,6 +19,12 @@ inputs:
   cache-scope:
     description: Explicit matrix or workload variant namespace, in addition to repository/workflow/job identity.
     default: ''
+  cache-save-policy:
+    description: Save missing dependency baselines (on-miss) or refresh eligible snapshots (always).
+    default: on-miss
+  cache-save-branches:
+    description: Save only on the repository default branch (default) or allow all branches and PR refs (all), subject to runner permissions.
+    default: default
   cache-module-scope:
     description: Opt-in repository module sharing group across workflows, jobs, scopes, and Go versions. Requires split layout and trusted writers.
     default: ''

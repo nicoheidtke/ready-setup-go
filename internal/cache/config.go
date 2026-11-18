@@ -45,15 +45,24 @@ type Config struct {
 	Strict                 bool          `json:"strict"`
 	DisableBuildSave       bool          `json:"disable_build_save,omitempty"`
 	SaveOnFailure          bool          `json:"save_on_failure"`
-	Report                 string        `json:"report,omitempty"`
-	DisableSummary         bool          `json:"disable_summary,omitempty"`
+	// Empty values retain the legacy behavior in compatible main/post state.
+	SavePolicy     string `json:"save_policy,omitempty"`
+	SaveBranches   string `json:"save_branches,omitempty"`
+	Report         string `json:"report,omitempty"`
+	DisableSummary bool   `json:"disable_summary,omitempty"`
 }
 
 func DefaultConfig() Config {
-	return Config{Mode: "off", Layout: "split", Compression: "gzip", CompressionConcurrency: 4, RestoreConcurrency: 4, Storage: "archive", ChunkConcurrency: 4, Overlap: true, MaxBytes: DefaultMaxBytes, UploadConcurrency: 4, UploadChunkBytes: 32 << 20, DownloadConcurrency: 4, DownloadChunkBytes: 32 << 20}
+	return Config{Mode: "off", SavePolicy: "on-miss", SaveBranches: "default", Layout: "split", Compression: "gzip", CompressionConcurrency: 4, RestoreConcurrency: 4, Storage: "archive", ChunkConcurrency: 4, Overlap: true, MaxBytes: DefaultMaxBytes, UploadConcurrency: 4, UploadChunkBytes: 32 << 20, DownloadConcurrency: 4, DownloadChunkBytes: 32 << 20}
 }
 
 func (c Config) Validate() error {
+	if c.SavePolicy != "" && c.SavePolicy != "on-miss" && c.SavePolicy != "always" {
+		return fmt.Errorf("cache-save-policy must be on-miss or always")
+	}
+	if c.SaveBranches != "" && c.SaveBranches != "default" && c.SaveBranches != "all" {
+		return fmt.Errorf("cache-save-branches must be default or all")
+	}
 	if c.GzipLevel != 0 && c.GzipLevel != -1 && (c.GzipLevel < 1 || c.GzipLevel > 9) {
 		return fmt.Errorf("cache-gzip-level must be default or 1..9")
 	}

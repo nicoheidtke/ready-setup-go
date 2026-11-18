@@ -21,6 +21,8 @@ type Snapshot struct {
 	Roots            []cachearchive.Root `json:"roots"`
 	// RestoredDigest identifies validated archive contents, excluding mtimes.
 	RestoredDigest string `json:"restored_digest,omitempty"`
+	// Set only after complete validation and publication of a dependency match.
+	DependencyMatch bool `json:"dependency_match,omitempty"`
 	// RestoredChunks are bounded content-verified hints, never remote locators.
 	RestoredChunks []chunkHint `json:"restored_chunks,omitempty"`
 }

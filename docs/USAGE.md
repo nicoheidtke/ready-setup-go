@@ -4,7 +4,9 @@ Return to the [project overview](../README.md), see the [comparison with setup-g
 
 ## Usage
 
-Examples use the `v1` major version tag. It follows compatible releases. For a fixed revision, use the full distribution SHA from the [release notes](https://github.com/nicoheidtke/ready-setup-go/releases); source commits do not contain the packaged action.
+Examples use the `v2` major version tag. It follows compatible releases. For a fixed revision, use the full distribution SHA from the [release notes](https://github.com/nicoheidtke/ready-setup-go/releases); source commits do not contain the packaged action.
+
+Version 2 introduces the baseline save policies described below. Existing v1 pins retain their previous behavior. See the [short migration guide](RELEASES.md#baseline-cache-policy-migration).
 
 ```yaml
 permissions:
@@ -14,7 +16,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: nicoheidtke/ready-setup-go@v1
+      - uses: nicoheidtke/ready-setup-go@v2
         with:
           go-version: '1.26.x'
           cache: restore-save
@@ -27,7 +29,7 @@ Exact versions, such as `1.26.8`, reuse an installed match without a network req
 Alternatively, read the checked-out project's version file:
 
 ```yaml
-- uses: nicoheidtke/ready-setup-go@v1
+- uses: nicoheidtke/ready-setup-go@v2
   with:
     go-version-file: go.mod
     cache: restore-save
@@ -48,6 +50,8 @@ Go 1.x starting at 1.26 is supported. Prereleases, aliases such as `stable`, cus
 | `check-latest` | `false` | Check official metadata for the latest patch of a minor selector. |
 | `summary` | `true` | Append concise toolchain and cache results to the GitHub job summary. Set `false` to disable main and post-job summaries. |
 | `cache` | `off` | `off`, `restore` (restore only), or `restore-save` (restore and automatic post-job save). |
+| `cache-save-policy` | `on-miss` | Save a missing dependency baseline, or `always` to refresh eligible snapshots after hits. |
+| `cache-save-branches` | `default` | Save only on the repository default branch, or `all` to allow writers in other branch/PR scopes. Applies to modules and builds. |
 | `cache-scope` | Empty | Explicit matrix or workload variant, in addition to repository/workflow/job identity. |
 | `cache-module-scope` | Empty | Opt-in repository module sharing group across workflows, jobs, scopes, and Go versions. Requires `split`; all eligible writers must be trusted. |
 | `cache-gzip-level` | `default` | Gzip level `1` through `9`, or the existing standard-library default. Lower levels favor compression speed over encoded size. Ignored for other codecs. |
@@ -85,7 +89,7 @@ Snapshots include operating system, architecture, exact selected Go version, rep
 Restore first looks for recent dependency-matching snapshots, then compatible snapshots in the same namespace so dependency changes can reuse existing objects. GitHub enforces branch visibility and default-branch fallback. Build/test/lint jobs have separate job identities; matrix variants within one job must include their differing dimensions in `cache-scope`:
 
 ```yaml
-- uses: nicoheidtke/ready-setup-go@v1
+- uses: nicoheidtke/ready-setup-go@v2
   with:
     go-version: '${{ matrix.go }}'
     cache: restore-save
@@ -98,39 +102,43 @@ Restore first looks for recent dependency-matching snapshots, then compatible sn
 
 Set the same nonempty `cache-module-scope` in trusted jobs to share module snapshots across workflow/job identities, `cache-scope` variants, and selected Go versions. This opt-in uses a separate module namespace; operating system, architecture, storage, compression, and dependency matching remain partitioned. Build snapshots retain their full existing isolation. Returning to an empty module scope restores the original namespace. Scope names are grouping labels, not access controls; GitHub branch/token visibility still applies. Module caches are build inputs, including executable toolchain downloads: only group writers whose contents every reader trusts.
 
-A save uses a fresh immutable key incorporating run and attempt identity plus a random invocation suffix. In split mode, restored module contents are compared with the local tree before packing: unchanged paths, file contents and permissions skip compression and upload even if timestamps changed. Same-size content changes are detected. Build archives remain fresh. Empty archives skip upload. Combined mode always considers the complete snapshot.
+A save uses a fresh immutable key incorporating run and attempt identity plus a random invocation suffix. Matching and compatible lookup prefixes remain stable, so existing snapshots can still restore. An exact dependency match means the current fingerprint matched and the complete snapshot restored successfully; it does not require equality with the new invocation's save key. Empty archives skip upload.
 
 ### Choosing a save policy
 
-The module cache (`GOMODCACHE`) contains downloaded module source and metadata. The build cache (`GOCACHE`) contains compiled results for both dependencies and your own packages, plus cached test results. A dependency-matching restore does not mean the build cache is unchanged: source edits, coverage, build flags, and commands run later in the job can create new results without changing `go.mod` or `go.sum`. The action does not compare build-cache contents before saving. With build saves enabled, a successful job uploads a fresh nonempty build snapshot even after a restore hit.
+With `cache: restore-save`, the defaults maintain a dependency baseline on the repository's default branch. Every branch tries a dependency match first, then compatible fallback. A successful default-branch job saves nonempty snapshots that did not restore for the current dependency fingerprint. Successfully restored matches skip save-time directory scans, fingerprinting, compression and upload. Split module/build snapshots decide independently; combined snapshots follow the same rule.
 
-Choose the policy according to how much refresh work your workflow can justify:
+Dependency changes can restore the previous baseline and seed a new one. A source-only edit does not refresh the baseline: Go rebuilds results that no longer match, and that new work is not retained remotely. The module cache (`GOMODCACHE`) holds downloaded source and metadata; the build cache (`GOCACHE`) mixes compiled dependencies, application packages and cached test results. This policy deliberately trades repeated application work for fewer uploads. It does not compare build contents or automatically refresh by age. Eviction, deletion or compatibility changes can also require seeding again; repeatedly accessed entries need not expire.
+
+Default-branch eligibility requires `GITHUB_REF` to match `repository.default_branch` in the runner's `GITHUB_EVENT_PATH`, with matching repository identity. Missing, invalid or larger-than-1-MiB event metadata skips saves with an explanation, even in strict mode. Feature branches, PR merge refs and tags restore without saving by default. Post rechecks branch and runner permissions. Standalone callers without runner event metadata can explicitly select `cache-save-branches: all`.
 
 | Goal | Configuration | Tradeoff |
 | --- | --- | --- |
-| Retain recent compiled results | `cache: restore-save` with the default `cache-build-save: true` | Packs and saves the build cache on each eligible job, including warm runs. |
-| Refresh builds selectively, still save changed modules | `cache: restore-save`, `cache-layout: split`, and an expression for `cache-build-save` | Skipped build saves avoid packing/upload; recent compiled results may need rebuilding. |
+| Default-branch baseline | `cache: restore-save` | Warm dependency matches avoid saves; source-only results are not refreshed. |
+| Long-lived branch baselines | Also set `cache-save-branches: all` | Branch/PR writers seed changed dependency baselines in their GitHub ref scopes. |
+| Retain recent compiled results | Also set `cache-save-policy: always` | Every eligible nonempty build snapshot is packed and saved after hits. |
 | Consume existing caches without any saves | `cache: restore` | Neither module nor build caches are seeded or refreshed. |
 
-For example, refresh builds on the repository's default branch while other branches restore builds and independently save changed modules:
+Writer eligibility and refresh frequency are independent. For example, permit branch-local baselines and refresh builds every fifth workflow run:
 
 ```yaml
 cache: restore-save
-cache-layout: split
-cache-build-save: '${{ github.ref == format(''refs/heads/{0}'', github.event.repository.default_branch) }}'
+cache-save-branches: all
+cache-save-policy: "${{ (endsWith(github.run_number, '0') || endsWith(github.run_number, '5')) && 'always' || 'on-miss' }}"
 ```
 
-GitHub permits default-branch cache fallback, but the action's workflow/job and matrix scope isolation still applies. Each consuming job/scope needs its own eligible writer; saving only in a build job does not seed a test job. A disabled build save also applies on a miss, so seed caches on an eligible branch first or accept rebuilding until that writer succeeds. A branch-specific writer does not seed the default branch. Restricting build saves does not restrict module saves; use `cache: restore` when all writes should be disabled. Workflow policy remains subject to runner cache permissions.
+This is a workflow-run-number policy, not an elapsed-time interval or guaranteed refresh cadence. Failed, skipped or cancelled eligible runs can leave a longer gap. Set `always` directly for every eligible run. In always mode, split modules retain the full-content comparison: unchanged paths, permissions and contents skip packing/upload even if timestamps change; changed contents, including same-size changes, can save. Combined mode considers the complete snapshot.
 
-Selective saves are a policy choice, not automatic change detection or a measured speedup. Compare complete workflow time, repeated compilation, transfer, and cache storage before choosing a default. Avoid adding commit identity to `cache-scope` just to force refreshes: it prevents reuse within the existing scope.
+GitHub controls branch visibility and default-branch fallback; branch names need not enter cache keys. A PR-created cache is scoped to its merge ref. The action's workflow/job and matrix isolation still applies: each consuming job/scope needs an eligible writer in that namespace. Saving only in a build job does not seed a separate test job. Shared module groups should be seeded with all needed module contents, or separated when their workloads differ; the first matching baseline is retained under on-miss even if a later job downloads more modules.
 
-For less frequent build saves, keep `cache: restore-save` and `cache-layout: split`, then use a [workflow expression](https://docs.github.com/en/actions/reference/workflows-and-actions/expressions#endswith) such as:
+`cache-build-save: false` remains an additional split-layout opt-out. It skips build packing/upload even on a miss, so it prevents seeding as well as refresh. It does not change module policy. For example, disable build snapshots while retaining eligible module saves:
 
 ```yaml
-cache-build-save: "${{ endsWith(github.run_number, '0') || endsWith(github.run_number, '5') }}"
+cache: restore-save
+cache-build-save: false
 ```
 
-This permits build saves every fifth workflow run number; it is not an elapsed-time interval or a guarantee that a successful save occurs every five executions. Skipped, failed, or cancelled eligible runs may leave a longer gap. A disabled save skips build packing and upload even on a cold miss; restores and changed-module saves still run. Keep the default or explicitly enable it when seeding a new scope. `false` with combined layout is rejected because modules and builds share one archive.
+False with combined layout is rejected because modules and builds share one archive. To deliberately refresh without discarding compatible history, select `always` for the desired invocation. Avoid putting commit identity in `cache-scope`: that prevents reuse. Compare complete workflow time, repeated compilation and storage before choosing a different policy; fewer uploads alone do not establish a speedup.
 
 Downloads are validated in staging before local caches are modified. Existing local regular files win, and unrelated entries are retained. Links, unsafe paths, special files, duplicate entries, and case collisions are rejected. Corrupt downloads leave local data untouched; a merge I/O error may leave successfully added new files. The action targets trusted GitHub-hosted runner filesystems.
 

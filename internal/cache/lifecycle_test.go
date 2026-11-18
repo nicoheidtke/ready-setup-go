@@ -137,6 +137,7 @@ func TestSplitLifecycleFreshBuildAndUnchangedModules(t *testing.T) {
 			ctx := context.Background()
 			c := DefaultConfig()
 			c.Mode = "restore-save"
+			c.SavePolicy = "always"
 			c.Strict = true
 			c.Compression = compression
 			seedRoots := roots(t)
@@ -523,6 +524,7 @@ func TestMissingCorruptPostStatePolicy(t *testing.T) {
 // Exercise the real Start -> GITHUB_STATE -> Post bridge against a loopback v2
 // service, including fresh token injection and actual archive upload.
 func TestStartPostBridge(t *testing.T) {
+	setBranchContext(t, "refs/heads/trunk")
 	toolchain := runtime.GOROOT()
 	rs := roots(t)
 	workspace := t.TempDir()

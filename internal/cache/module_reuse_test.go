@@ -14,6 +14,7 @@ func TestModuleContentReuseIgnoresTimestampsWithoutPacking(t *testing.T) {
 			ctx := context.Background()
 			c := DefaultConfig()
 			c.Mode, c.Strict, c.Storage = "restore-save", true, storage
+			c.SavePolicy = "always"
 			seedRoots := roots(t)
 			put(t, filepath.Join(seedRoots[0].Path, "module"), "unchanged")
 			seed := state(t, c, "deps", seedRoots)
@@ -55,6 +56,7 @@ func TestModuleContentReuseDetectsSameSizeAndLocalPriority(t *testing.T) {
 			ctx := context.Background()
 			c := DefaultConfig()
 			c.Mode, c.Strict = "restore-save", true
+			c.SavePolicy = "always"
 			seedRoots := roots(t)
 			put(t, filepath.Join(seedRoots[0].Path, "module"), "original")
 			seed := state(t, c, "deps", seedRoots)

@@ -98,6 +98,9 @@ func main() {
 
 func run() error {
 	o := options{Config: cache.DefaultConfig()}
+	// This synchronous maintainer harness explicitly writes its isolated samples;
+	// branch eligibility is covered by main/post fixtures, not these direct APIs.
+	o.Config.SaveBranches = "all"
 	flag.StringVar(&o.Workload, "workload", "small", "small, monorepo, exasol-build, exasol-test, exasol-lint")
 	flag.StringVar(&o.Scenario, "scenario", "unchanged", "cold, unchanged, source, dependency, go-upgrade")
 	flag.StringVar(&o.Source, "source", "testdata/packages", "pinned package fixture or Exasol checkout")
@@ -107,6 +110,7 @@ func run() error {
 	flag.IntVar(&o.Samples, "samples", 20, "paired observations, minimum 20 outside correctness mode")
 	flag.BoolVar(&o.Validation, "validation", false, "correctness-only smoke; permits fewer samples and makes no performance summary")
 	flag.StringVar(&o.Config.Mode, "mode", "restore-save", "candidate mode: restore-save or restore; baseline is always off")
+	flag.StringVar(&o.Config.SavePolicy, "save-policy", o.Config.SavePolicy, "on-miss or always; candidate snapshot refresh policy")
 	flag.StringVar(&o.Config.Layout, "layout", "split", "split or combined")
 	flag.IntVar(&o.Config.ChunkConcurrency, "chunk-concurrency", o.Config.ChunkConcurrency, "parallel chunk compression/transfer workers, 1..16")
 	flag.IntVar(&o.Config.CompressionConcurrency, "compression-concurrency", o.Config.CompressionConcurrency, "whole-archive compression workers, 1..16")

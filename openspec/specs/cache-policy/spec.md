@@ -94,7 +94,7 @@ Invalid cache configuration SHALL fail setup regardless of `cache-strict`. Opera
 
 ### Requirement: Main and post retain compatible save intent
 
-The main/post handoff SHALL retain the prepared snapshot identities, paths, and relevant save configuration without persisting runtime bearer credentials or signed URLs. Post SHALL use freshly injected credentials, accept compatible saved configuration, and reject missing, corrupt, or incompatible referenced state under the configured error policy. When no state is registered, post SHALL perform no cache save.
+The main/post handoff SHALL retain prepared snapshot identities, paths, successful dependency-match outcomes and save configuration without runtime bearer credentials or signed URLs. Post SHALL use fresh credentials and reject missing, corrupt or incompatible state under the operational error policy. Compatible old state omitting the new save policies SHALL retain always-refresh and all-branch eligibility. No registered state SHALL perform no save.
 
 #### Scenario: Fresh post credentials
 
@@ -105,6 +105,11 @@ The main/post handoff SHALL retain the prepared snapshot identities, paths, and 
 
 - **WHEN** a compatible saved configuration omits the later build-save opt-out field
 - **THEN** the existing default of allowing build saves is retained
+
+#### Scenario: Compatible older configuration omits baseline policies
+
+- **WHEN** compatible saved configuration lacks cache-save-policy and cache-save-branches
+- **THEN** post retains legacy always-refresh and all-branch behavior rather than silently interpreting the state as a new baseline invocation
 
 #### Scenario: Referenced state is corrupt
 
@@ -148,3 +153,37 @@ Cache processing SHALL observe cancellation and stop starting subsequent snapsho
 
 - **WHEN** cancellation occurs during the first split snapshot
 - **THEN** the next snapshot does not start
+
+### Requirement: Save branches default to the repository default branch
+
+`cache-save-branches` SHALL default to `default` and accept `default` or `all`. Default SHALL permit saves only when the actual runner ref is the repository default branch established from bounded event metadata. Missing, malformed, oversized or inconsistent metadata SHALL disable saves without failing restores or strict mode. All SHALL permit branch-local saves subject to lifecycle and runner permissions. Post SHALL recheck this policy.
+
+#### Scenario: Default branch writer
+
+- **WHEN** valid runner event metadata identifies the repository default branch and the runner ref matches that branch
+- **THEN** default branch policy permits an otherwise eligible save
+
+#### Scenario: Feature branch or pull request
+
+- **WHEN** the runner ref is a feature branch, tag or pull-request merge ref under default policy
+- **THEN** caching restores normally and saves are skipped
+
+#### Scenario: Default branch cannot be established
+
+- **WHEN** event metadata is absent, invalid, larger than 1 MiB or belongs to another repository
+- **THEN** default-policy saves are skipped with a fixed explanatory reason and restore remains available
+
+#### Scenario: Branch-local writes are enabled
+
+- **WHEN** cache-save-branches is all
+- **THEN** an otherwise eligible job can save within GitHub's existing ref scope without requiring default-branch metadata
+
+#### Scenario: Branch context changes before post
+
+- **WHEN** main permits saving but post no longer establishes an eligible ref
+- **THEN** post skips saving before backend construction or snapshot scanning
+
+#### Scenario: Invalid branch policy
+
+- **WHEN** an unsupported cache-save-branches value is supplied
+- **THEN** configuration validation fails regardless of strictness

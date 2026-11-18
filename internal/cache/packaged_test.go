@@ -79,7 +79,15 @@ func TestPackagedLifecycle(t *testing.T) {
 	if node == "" {
 		node = "node"
 	}
-	workspace := filepath.Join(repo, "testdata", "smoke")
+	// Keep dependency mutations private and the workspace path stable through history.
+	workspace := t.TempDir()
+	for _, name := range []string{"go.mod", "main.go", "main_test.go"} {
+		data, err := os.ReadFile(filepath.Join(repo, "testdata", "smoke", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		put(t, filepath.Join(workspace, name), string(data))
+	}
 	nativeManifest, err := distribution.ReadNativeDownloads(dist)
 	if err != nil {
 		t.Fatal(err)
@@ -204,12 +212,23 @@ globalThis.fetch=async(url,options)=>{if(url!==%s || Object.keys(options.headers
 	}))
 	defer server.Close()
 
-	for iteration := 0; iteration < 2; iteration++ {
+	// Cold baseline, unchanged baseline, restore-only branch, dependency change,
+	// and two explicit always/all runs exercise both policies across main/alias.
+	for iteration := 0; iteration < 6; iteration++ {
 		root, err := filepath.EvalSymlinks(t.TempDir())
 		if err != nil {
 			t.Fatal(err)
 		}
 		cacheRoot := filepath.Join(root, "cache roots with spaces")
+		eventPath := filepath.Join(root, "event.json")
+		put(t, eventPath, `{"repository":{"full_name":"test/local","default_branch":"main"}}`)
+		if iteration == 3 {
+			data, err := os.ReadFile(filepath.Join(workspace, "go.mod"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			put(t, filepath.Join(workspace, "go.mod"), string(data)+"\n// changed dependency fingerprint\n")
+		}
 		build, modules := filepath.Join(cacheRoot, "build"), filepath.Join(cacheRoot, "modules")
 		fields := map[string]string{}
 		for _, key := range []string{"GITHUB_ENV", "GITHUB_PATH", "GITHUB_OUTPUT", "GITHUB_STATE", "GITHUB_STEP_SUMMARY"} {
@@ -217,6 +236,7 @@ globalThis.fetch=async(url,options)=>{if(url!==%s || Object.keys(options.headers
 			put(t, fields[key], "")
 		}
 		env := map[string]string{
+			"GITHUB_REF": "refs/heads/main", "GITHUB_EVENT_PATH": eventPath,
 			"GITHUB_ACTIONS": "true", "RUNNER_DEBUG": "1", "NO_COLOR": "1", "INPUT_SUMMARY": "true",
 			"RUNNER_TEMP": runnerTemp, "RUNNER_TOOL_CACHE": "", "GITHUB_WORKSPACE": workspace, "GITHUB_REPOSITORY": "test/local", "GITHUB_WORKFLOW_REF": "test/local/.github/workflows/packaged.yml@refs/heads/main", "GITHUB_JOB": "packaged-smoke", "GITHUB_ACTION": fmt.Sprintf("packaged_smoke_%d", iteration), "GITHUB_RUN_ID": "local", "GITHUB_RUN_ATTEMPT": "1",
 			"INPUT_GO-VERSION": version, "INPUT_CHECK-LATEST": "false", "INPUT_CACHE": "restore-save", "INPUT_CACHE-LAYOUT": "combined", "INPUT_CACHE-COMPRESSION": compression, "INPUT_CACHE-STRICT": "true", "INPUT_CACHE-SCOPE": "local-packaged-smoke", "INPUT_CACHE-DEPENDENCY-PATH": ".", "INPUT_CACHE-REPORT": filepath.Join(root, "cache-report.json"),
@@ -227,6 +247,12 @@ globalThis.fetch=async(url,options)=>{if(url!==%s || Object.keys(options.headers
 			"INPUT_CACHE-GZIP-LEVEL":           gzipLevel,
 			"GOCACHE":                          build, "GOMODCACHE": modules, "GOPATH": filepath.Join(root, "gopath"), "GOROOT": toolchain, "GOTOOLCHAIN": "local", "GOTELEMETRY": "off", "ACTIONS_RESULTS_URL": server.URL, "ACTIONS_RUNTIME_TOKEN": "local-test-main", "ACTIONS_CACHE_MODE": "", "STATE_cache_state": "", "STATE_cache_strict": "",
 			"HTTP_PROXY": "http://127.0.0.1:1", "HTTPS_PROXY": "http://127.0.0.1:1", "NO_PROXY": "127.0.0.1,localhost",
+		}
+		if iteration == 2 || iteration >= 4 {
+			env["GITHUB_REF"] = "refs/heads/feature"
+		}
+		if iteration >= 4 {
+			env["INPUT_CACHE-SAVE-POLICY"], env["INPUT_CACHE-SAVE-BRANCHES"] = "always", "all"
 		}
 		if nativeShim != "" {
 			env["NODE_OPTIONS"] = "--require=\"" + filepath.ToSlash(nativeShim) + "\""
@@ -267,7 +293,7 @@ globalThis.fetch=async(url,options)=>{if(url!==%s || Object.keys(options.headers
 			}
 		}
 		launcherRoot := dist
-		if iteration == 1 {
+		if iteration%2 == 1 {
 			launcherRoot = filepath.Join(dist, "experimental", "node")
 		}
 		execute(node, filepath.Join(launcherRoot, "launch.cjs"))
@@ -280,7 +306,7 @@ globalThis.fetch=async(url,options)=>{if(url!==%s || Object.keys(options.headers
 			t.Fatal(err)
 		}
 		want := "false"
-		if iteration == 1 {
+		if iteration > 0 {
 			want = "true"
 		}
 		if !strings.Contains(string(outputs), "cache-hit="+want+"\n") {
@@ -304,6 +330,13 @@ globalThis.fetch=async(url,options)=>{if(url!==%s || Object.keys(options.headers
 		if err != nil {
 			t.Fatal(err)
 		}
+		if iteration == 2 {
+			if strings.Contains(string(stateData), "cache_state=") {
+				t.Fatal("feature branch registered a default-policy save")
+			}
+			execute(node, filepath.Join(launcherRoot, "post.cjs"))
+			continue
+		}
 		for _, line := range strings.Split(strings.TrimSpace(string(stateData)), "\n") {
 			key, value, _ := strings.Cut(line, "=")
 			env["STATE_"+key] = value
@@ -325,8 +358,17 @@ globalThis.fetch=async(url,options)=>{if(url!==%s || Object.keys(options.headers
 		if _, err := os.Stat(env["STATE_cache_state"]); !os.IsNotExist(err) {
 			t.Fatal("post did not remove private state", err)
 		}
-		if _, err := os.Stat(env["INPUT_CACHE-REPORT"] + ".post.json"); err != nil {
-			t.Fatal(err)
+		data, err := os.ReadFile(env["INPUT_CACHE-REPORT"] + ".post.json")
+		var postReport Report
+		if err != nil || json.Unmarshal(data, &postReport) != nil || len(postReport.Snapshots) != 1 {
+			t.Fatalf("missing packaged post report: %s %v", data, err)
+		}
+		if m := postReport.Snapshots[0]; iteration == 1 {
+			if !m.Skipped || m.SaveReason != "dependency-match" || m.Bytes != 0 || m.ArchiveMS != 0 {
+				t.Fatalf("warm baseline did save work: %+v", m)
+			}
+		} else if m.Skipped || m.Bytes == 0 {
+			t.Fatalf("eligible snapshot did not save: %+v", m)
 		}
 		if bash := os.Getenv("READY_SETUP_GO_TEST_BASH"); iteration == 1 && bash != "" && nativeManifest == nil {
 			env["READY_SETUP_GO_ROOT"] = dist
@@ -360,7 +402,14 @@ globalThis.fetch=async(url,options)=>{if(url!==%s || Object.keys(options.headers
 			snapshots = append(snapshots, entry.key)
 		}
 	}
-	if len(snapshots) != 2 || snapshots[0] == snapshots[1] {
-		t.Fatal("main/post failed fresh immutable snapshot lifecycle", len(stored))
+	if len(snapshots) != 4 {
+		t.Fatal("main/post failed baseline and refresh lifecycle", len(stored), len(snapshots))
+	}
+	seen := map[string]bool{}
+	for _, key := range snapshots {
+		if seen[key] {
+			t.Fatal("reused immutable snapshot key")
+		}
+		seen[key] = true
 	}
 }

@@ -48,11 +48,11 @@ func Save(ctx context.Context, b Backend, s State) (Report, error) {
 		}
 		m := Metric{Kind: snap.Kind, Key: snap.Key}
 		err := func() (transferErr error) {
-			if snap.Kind == "build" && s.Config.DisableBuildSave {
-				m.Skipped, m.SaveReason = true, "build-save-disabled"
+			if reason := snapshotSaveSkip(s.Config, snap); reason != "" {
+				m.Skipped, m.SaveReason = true, reason
 				return nil
 			}
-			if snap.Kind == "modules" && snap.RestoredDigest != "" {
+			if snap.Kind == "modules" && snap.RestoredDigest != "" && s.Config.SavePolicy != "on-miss" {
 				t := time.Now()
 				stats, err := cachearchive.Fingerprint(ctx, snap.Roots, s.Config.MaxBytes)
 				m.ModuleCheckMS = ms(t)

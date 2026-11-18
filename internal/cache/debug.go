@@ -11,6 +11,7 @@ func debugConfig(c Config) {
 	actionlog.Default.DebugJSON("cache configuration", map[string]any{
 		"mode": c.Mode, "layout": c.Layout, "storage": c.Storage, "compression": c.Compression,
 		"overlap": c.Overlap, "strict": c.Strict, "save_on_failure": c.SaveOnFailure,
+		"save_policy": c.SavePolicy, "save_branches": c.SaveBranches,
 		"compression_workers": c.CompressionConcurrency, "restore_workers": c.RestoreConcurrency,
 		"chunk_workers": c.ChunkConcurrency, "upload_workers": c.UploadConcurrency,
 		"download_workers": c.DownloadConcurrency, "upload_chunk_bytes": c.UploadChunkBytes,

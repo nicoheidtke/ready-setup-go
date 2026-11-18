@@ -14,6 +14,7 @@ func TestBuildSaveDisabledRetainsModuleSaveAndBuildRestore(t *testing.T) {
 			ctx := context.Background()
 			c := DefaultConfig()
 			c.Mode, c.Strict, c.Storage = "restore-save", true, storage
+			c.SavePolicy = "always"
 			seedRoots := roots(t)
 			put(t, filepath.Join(seedRoots[0].Path, "module"), "original module")
 			put(t, filepath.Join(seedRoots[1].Path, "object"), "original build")

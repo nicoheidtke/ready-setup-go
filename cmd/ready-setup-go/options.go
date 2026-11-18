@@ -39,6 +39,8 @@ func parseSetupOptions(args []string, getenv func(string) string) (setupOptions,
 		return fallback
 	}
 	fs.StringVar(&c.Mode, "cache", input("CACHE", c.Mode), "off, restore, or restore-save")
+	fs.StringVar(&c.SavePolicy, "cache-save-policy", input("CACHE-SAVE-POLICY", c.SavePolicy), "on-miss or always; controls snapshot refresh")
+	fs.StringVar(&c.SaveBranches, "cache-save-branches", input("CACHE-SAVE-BRANCHES", c.SaveBranches), "default or all; controls eligible cache writers")
 	fs.StringVar(&c.Layout, "cache-layout", input("CACHE-LAYOUT", c.Layout), "split or combined")
 	fs.StringVar(&c.Storage, "cache-storage", input("CACHE-STORAGE", c.Storage), "archive or chunked")
 	overlap := fs.String("cache-overlap", input("CACHE-OVERLAP", strconv.FormatBool(c.Overlap)), "overlap toolchain installation with cache prefetch")
@@ -119,6 +121,10 @@ func parseSetupOptions(args []string, getenv func(string) string) (setupOptions,
 	}
 	if c.DownloadChunkBytes, err = strconv.ParseInt(*downloadChunk, 10, 64); err != nil {
 		return setupOptions{}, "", fmt.Errorf("cache-download-chunk-bytes: %w", err)
+	}
+	// Empty fields are reserved for compatible old main/post state, not new inputs.
+	if c.SavePolicy == "" || c.SaveBranches == "" {
+		return setupOptions{}, "", fmt.Errorf("cache-save-policy and cache-save-branches must be nonempty")
 	}
 	if err = c.Validate(); err != nil {
 		return setupOptions{}, "", err

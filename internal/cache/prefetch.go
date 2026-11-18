@@ -172,6 +172,7 @@ func (p *Prefetch) merge(ctx context.Context, s *State) (Report, error) {
 	for i := range r.Snapshots {
 		m := &r.Snapshots[i]
 		s.Snapshots[i].RestoredDigest = ""
+		s.Snapshots[i].DependencyMatch = false
 		s.Snapshots[i].RestoredChunks = nil
 		err := func() error {
 			if p.errors[i] != nil {
@@ -190,7 +191,7 @@ func (p *Prefetch) merge(ctx context.Context, s *State) (Report, error) {
 				compression = "none"
 			}
 			t := time.Now()
-			stats, err := cachearchive.Restore(ctx, f, s.Snapshots[i].Roots, cachearchive.Options{Compression: compression, RestoreConcurrency: s.Config.RestoreConcurrency, MaxBytes: s.Config.MaxBytes, ContentIdentity: m.Kind == "modules"})
+			stats, err := cachearchive.Restore(ctx, f, s.Snapshots[i].Roots, cachearchive.Options{Compression: compression, RestoreConcurrency: s.Config.RestoreConcurrency, MaxBytes: s.Config.MaxBytes, ContentIdentity: m.Kind == "modules" && s.Config.SavePolicy != "on-miss"})
 			m.ArchiveMS = ms(t)
 			m.ArchiveStageMS, m.ArchivePreflightMS = stats.StageMS, stats.PreflightMS
 			m.ArchiveMergeMS, m.ArchiveCleanupMS = stats.MergeMS, stats.CleanupMS
@@ -203,6 +204,7 @@ func (p *Prefetch) merge(ctx context.Context, s *State) (Report, error) {
 				s.Snapshots[i].RestoredChunks = p.chunkHints[i]
 			}
 			m.Hit = true
+			s.Snapshots[i].DependencyMatch = m.MatchType == "dependency-exact"
 			m.Files = stats.Files
 			m.PayloadBytes = stats.Bytes
 			if m.Kind == "modules" {

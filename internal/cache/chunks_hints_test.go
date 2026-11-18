@@ -111,6 +111,9 @@ func TestChunkHintsPersistOnlyAfterFullArchiveValidation(t *testing.T) {
 	if len(dest.Snapshots[1].RestoredChunks) != 0 {
 		t.Fatal("unvalidated archive retained hints")
 	}
+	if dest.Snapshots[1].DependencyMatch {
+		t.Fatal("unvalidated archive suppressed baseline seeding")
+	}
 }
 
 func TestChunkHintStateRemainsBounded(t *testing.T) {
