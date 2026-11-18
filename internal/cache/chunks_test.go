@@ -185,7 +185,10 @@ func TestPrefetchDoesNotNeedOrMutateDestinations(t *testing.T) {
 	s := state(t, c, "deps", []cachearchive.Root{{Name: "modules"}, {Name: "build"}})
 	p := &Prefetch{state: s, backend: b}
 	p.download(ctx)
-	files := append([]string(nil), p.files...)
+	var files []string
+	for _, snap := range p.snapshots {
+		files = append(files, snap.file)
+	}
 	dest := roots(t)
 	if _, err := os.Stat(dest[0].Path); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("prefetch created destination")
@@ -262,7 +265,8 @@ func TestCompletedPrefetchErrorAvoidsGoQuery(t *testing.T) {
 	c := DefaultConfig()
 	c.Mode = "restore"
 	c.Strict = true
-	p := &Prefetch{done: make(chan struct{}), err: errors.New("prefetch credentials unavailable")}
+	p := &Prefetch{ready: make(chan struct{}), done: make(chan struct{}), err: errors.New("prefetch credentials unavailable")}
+	close(p.ready)
 	close(p.done)
 	err := StartPrefetched(context.Background(), c, "1.26.0", filepath.Join(t.TempDir(), "no-go"), p)
 	if err == nil || !strings.Contains(err.Error(), "prefetch credentials unavailable") {

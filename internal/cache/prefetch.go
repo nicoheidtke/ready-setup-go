@@ -18,16 +18,28 @@ import (
 // StartPrefetched queries the selected installed executable.
 type Prefetch struct {
 	cancel        context.CancelFunc
+	ready         chan struct{}
 	done          chan struct{}
 	state         State
 	backend       Backend
-	report        Report
-	files         []string
-	chunkHints    [][]chunkHint
+	snapshots     []prefetchedSnapshot
 	err           error
-	errors        []error
 	transferErr   error
+	skippedReason string
 	preparationMS float64
+	transferStart time.Time
+	transferEnd   time.Time
+}
+
+// A downloader owns each result until it closes ready, then the restore
+// consumer can read it without sharing mutable metrics or archive files.
+type prefetchedSnapshot struct {
+	ready     chan struct{}
+	attempted bool
+	metric    Metric
+	file      string
+	hints     []chunkHint
+	err       error
 }
 
 func BeginPrefetch(ctx context.Context, c Config, version string) *Prefetch {
@@ -35,40 +47,49 @@ func BeginPrefetch(ctx context.Context, c Config, version string) *Prefetch {
 		return nil
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	p := &Prefetch{cancel: cancel, done: make(chan struct{})}
+	p := &Prefetch{cancel: cancel, ready: make(chan struct{}), done: make(chan struct{})}
 	go func() {
 		defer close(p.done)
-		start := time.Now()
-		if p.err = c.Validate(); p.err != nil {
-			return
+		read := p.prepare(ctx, c, version)
+		if p.err == nil && read {
+			p.prepareDownloads()
 		}
-		read, write := permissions()
-		if !read && (!write || c.Mode == "restore") {
-			return
-		}
-		p.backend, p.err = newBackend(c)
-		if p.err != nil {
-			return
-		}
-		workspace := os.Getenv("GITHUB_WORKSPACE")
-		if workspace == "" {
-			workspace, p.err = os.Getwd()
-			if p.err != nil {
-				return
-			}
-		}
-		var deps string
-		deps, p.err = Dependencies(ctx, workspace, c.DependencyPaths)
-		if p.err != nil {
-			return
-		}
-		p.state, p.err = NewState(c, version, deps, []cachearchive.Root{{Name: "modules"}, {Name: "build"}})
-		p.preparationMS = ms(start)
+		close(p.ready)
 		if p.err == nil && read {
 			p.download(ctx)
 		}
 	}()
 	return p
+}
+
+func (p *Prefetch) prepare(ctx context.Context, c Config, version string) bool {
+	start := time.Now()
+	if p.err = c.Validate(); p.err != nil {
+		return false
+	}
+	read, write := permissions()
+	if !read && (!write || c.Mode == "restore") {
+		return false
+	}
+	p.backend, p.err = newBackend(c)
+	if p.err != nil {
+		return false
+	}
+	workspace := os.Getenv("GITHUB_WORKSPACE")
+	if workspace == "" {
+		workspace, p.err = os.Getwd()
+		if p.err != nil {
+			return false
+		}
+	}
+	var deps string
+	deps, p.err = Dependencies(ctx, workspace, c.DependencyPaths)
+	if p.err != nil {
+		return false
+	}
+	p.state, p.err = NewState(c, version, deps, []cachearchive.Root{{Name: "modules"}, {Name: "build"}})
+	p.preparationMS = ms(start)
+	return read
 }
 
 // Close cancels and joins any pending worker before removing its private files.
@@ -82,24 +103,45 @@ func (p *Prefetch) Close() {
 	if p.done != nil {
 		<-p.done
 	}
-	for _, file := range p.files {
-		if file != "" {
-			os.Remove(file)
+	for _, snap := range p.snapshots {
+		if snap.file != "" {
+			os.Remove(snap.file)
 		}
 	}
 }
 
+func (p *Prefetch) prepareDownloads() {
+	p.snapshots = make([]prefetchedSnapshot, len(p.state.Snapshots))
+	for i := range p.snapshots {
+		p.snapshots[i].ready = make(chan struct{})
+	}
+	p.transferStart = time.Now()
+}
+
 func (p *Prefetch) download(ctx context.Context) {
-	start := time.Now()
-	p.report = Report{Phase: "restore"}
-	p.files = make([]string, len(p.state.Snapshots))
-	p.chunkHints = make([][]chunkHint, len(p.state.Snapshots))
+	if p.snapshots == nil {
+		p.prepareDownloads()
+	}
+	next := 0
+	defer func() {
+		p.transferEnd = time.Now()
+		if err := ctx.Err(); err != nil {
+			p.skippedReason, p.transferErr = err.Error(), err
+		}
+		// A cancelled downloader must also release consumers waiting for a
+		// snapshot that was never started.
+		for ; next < len(p.snapshots); next++ {
+			close(p.snapshots[next].ready)
+		}
+	}()
 	for i, snap := range p.state.Snapshots {
 		if err := ctx.Err(); err != nil {
-			p.report.SkippedReason = err.Error()
+			p.skippedReason = err.Error()
 			p.transferErr = err
 			break
 		}
+		result := &p.snapshots[i]
+		result.attempted = true
 		m := Metric{Kind: snap.Kind, Key: snap.Key}
 		err := func() (transferErr error) {
 			if err := ctx.Err(); err != nil {
@@ -124,64 +166,80 @@ func (p *Prefetch) download(ctx context.Context) {
 			if err != nil {
 				return err
 			}
-			defer f.Close()
-			p.files[i] = f.Name()
+			result.file = f.Name()
 			ctx, finish := actionlog.Default.Transfer(ctx, "Download "+snap.Kind+" cache", 0, p.state.Config.Storage != "chunked")
-			defer func() { finish(transferErr) }()
+			defer func() {
+				transferErr = errors.Join(transferErr, f.Close())
+				finish(transferErr)
+			}()
 			t = time.Now()
 			if p.state.Config.Storage == "chunked" {
-				err = downloadChunks(ctx, p.backend, snap, p.state.Config, *entry, f, &m, &p.chunkHints[i])
+				err = downloadChunks(ctx, p.backend, snap, p.state.Config, *entry, f, &m, &result.hints)
 			} else {
 				m.Bytes, err = p.backend.Download(ctx, *entry, f)
 			}
 			m.TransferMS = ms(t)
 			if err != nil {
-				os.Remove(f.Name()) // Close first on Windows below; Close also retries.
 				return err
 			}
 			return nil
 		}()
 		if errors.Is(err, errMissingChunk) {
 			// Eviction is a normal miss; never merge the downloaded prefix.
-			os.Remove(p.files[i])
-			p.files[i] = ""
+			os.Remove(result.file)
+			result.file = ""
 			m.Skipped = true
 			m.RestoreReason = "missing-chunk"
 		} else if err != nil {
-			os.Remove(p.files[i])
-			p.files[i] = ""
+			os.Remove(result.file)
+			result.file = ""
 			m.Error = err.Error()
 			m.RestoreReason = "restore-failed"
 			if errors.Is(err, cachebackend.ErrPermission) {
 				m.RestoreReason = "access-denied"
 			}
 		}
-		p.report.Snapshots = append(p.report.Snapshots, m)
+		result.metric = m
 		if errors.Is(err, errMissingChunk) {
 			err = nil
 		}
-		p.errors = append(p.errors, err)
+		result.err = err
+		close(result.ready)
+		next = i + 1
 	}
-	p.report.TotalMS = ms(start)
 }
 
 func (p *Prefetch) merge(ctx context.Context, s *State) (Report, error) {
 	start := time.Now()
-	r := p.report
+	r := Report{Phase: "restore"}
 	var first error
-	for i := range r.Snapshots {
-		m := &r.Snapshots[i]
+	for i := range p.snapshots {
+		result := &p.snapshots[i]
+		wait := time.Now()
+		select {
+		case <-result.ready:
+		case <-ctx.Done():
+			if p.cancel != nil {
+				p.cancel()
+			}
+			<-result.ready
+		}
+		r.PrefetchWaitMS += ms(wait)
+		if !result.attempted {
+			break
+		}
+		m := result.metric
 		s.Snapshots[i].RestoredDigest = ""
 		s.Snapshots[i].DependencyMatch = false
 		s.Snapshots[i].RestoredChunks = nil
 		err := func() error {
-			if p.errors[i] != nil {
-				return p.errors[i]
+			if result.err != nil {
+				return result.err
 			}
-			if p.files[i] == "" {
+			if result.file == "" {
 				return nil
 			}
-			f, err := os.Open(p.files[i])
+			f, err := os.Open(result.file)
 			if err != nil {
 				return err
 			}
@@ -200,9 +258,7 @@ func (p *Prefetch) merge(ctx context.Context, s *State) (Report, error) {
 			if err != nil {
 				return err
 			}
-			if i < len(p.chunkHints) {
-				s.Snapshots[i].RestoredChunks = p.chunkHints[i]
-			}
+			s.Snapshots[i].RestoredChunks = result.hints
 			m.Hit = true
 			s.Snapshots[i].DependencyMatch = m.MatchType == "dependency-exact"
 			m.Files = stats.Files
@@ -224,8 +280,15 @@ func (p *Prefetch) merge(ctx context.Context, s *State) (Report, error) {
 				warning(fmt.Errorf("restore %s: %w", m.Kind, err))
 			}
 		}
+		r.Snapshots = append(r.Snapshots, m)
 	}
-	r.TotalMS += ms(start)
+	if p.done != nil {
+		<-p.done
+	}
+	r.SkippedReason = p.skippedReason
+	// Report the union of transfer and restore spans. They overlap in pipeline
+	// mode; an intervening toolchain-only gap is not cache restore work.
+	r.TotalMS = restoreElapsedMS(p.transferStart, p.transferEnd, start, time.Now())
 	if first == nil {
 		first = p.transferErr
 	}
@@ -233,4 +296,15 @@ func (p *Prefetch) merge(ctx context.Context, s *State) (Report, error) {
 		first = nil
 	}
 	return r, first
+}
+
+func restoreElapsedMS(transferStart, transferEnd, restoreStart, restoreEnd time.Time) float64 {
+	elapsed := restoreEnd.Sub(restoreStart)
+	if !transferStart.IsZero() {
+		if transferEnd.After(restoreStart) {
+			transferEnd = restoreStart
+		}
+		elapsed += transferEnd.Sub(transferStart)
+	}
+	return float64(elapsed) / float64(time.Millisecond)
 }

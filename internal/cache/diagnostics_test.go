@@ -68,7 +68,8 @@ func TestMissingPostStateIdentity(t *testing.T) {
 	c := DefaultConfig()
 	c.Mode, c.Strict = "restore-save", true
 	c.SaveBranches = "all"
-	pending := &Prefetch{done: make(chan struct{}), state: state(t, c, "deps", roots(t)), backend: &memoryBackend{}}
+	pending := &Prefetch{ready: make(chan struct{}), done: make(chan struct{}), state: state(t, c, "deps", roots(t)), backend: &memoryBackend{}}
+	close(pending.ready)
 	close(pending.done)
 	err := StartPrefetched(context.Background(), c, "1.26.8", runtime.GOROOT(), pending)
 	if !errors.Is(err, ErrPostStateUnavailable) {

@@ -18,6 +18,9 @@ import (
 type entry struct {
 	name string
 	hdr  tar.Header
+	// Private Windows staging can finalize regular-file metadata through the
+	// still-open output handle, before whole-tree publication needs the file.
+	stagedMetadata bool
 }
 
 // Restore validates the complete archive and compression checksum in staging.
@@ -167,6 +170,7 @@ func restore(ctx context.Context, r io.Reader, roots []Root, opts Options, limit
 			target = filepath.Join(target, filepath.FromSlash(strings.Join(parts[1:], "/")))
 		}
 		var contentDigest []byte
+		stagedMetadata := false
 		if h.Typeflag == tar.TypeDir {
 			err = prepareStageDir(target)
 		} else {
@@ -183,6 +187,9 @@ func restore(ctx context.Context, r io.Reader, roots []Root, opts Options, limit
 					} else {
 						n, err = io.CopyBuffer(f, tr, copyBuffer)
 					}
+					if err == nil {
+						stagedMetadata, err = finalizeStagedFile(f, h)
+					}
 					err = errors.Join(err, f.Close())
 					stats.Files++
 					stats.Bytes += n
@@ -195,7 +202,7 @@ func restore(ctx context.Context, r io.Reader, roots []Root, opts Options, limit
 		if identity != nil {
 			identity.add(name, h.Mode, h.Typeflag == tar.TypeDir, contentDigest)
 		}
-		entries = append(entries, entry{name, retainedHeader(h)})
+		entries = append(entries, entry{name: name, hdr: retainedHeader(h), stagedMetadata: stagedMetadata})
 	}
 	// Drain for compression checksum verification; only tar zero padding is permitted.
 	buf := make([]byte, 32*1024)

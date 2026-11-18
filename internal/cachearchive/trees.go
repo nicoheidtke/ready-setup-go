@@ -17,6 +17,7 @@ func publishMissingTrees(ctx context.Context, stages map[string]string, entries 
 	type tree struct {
 		name, source, target string
 		hdr                  *tar.Header
+		stagedMetadata       bool
 		children             []*tree
 		files                int64
 	}
@@ -46,6 +47,7 @@ func publishMissingTrees(ctx context.Context, stages map[string]string, entries 
 			parent = n
 		}
 		parent.hdr = &e.hdr
+		parent.stagedMetadata = e.stagedMetadata
 	}
 	// Finalize directories after children so read-only modes and archive mtimes
 	// survive publication, including archives listing parents after their files.
@@ -60,6 +62,9 @@ func publishMissingTrees(ctx context.Context, stages map[string]string, entries 
 				err = errors.Join(err, metadata(child, true))
 			}
 			return err
+		}
+		if n.stagedMetadata {
+			return nil
 		}
 		for _, child := range n.children {
 			if err := metadata(child, false); err != nil {

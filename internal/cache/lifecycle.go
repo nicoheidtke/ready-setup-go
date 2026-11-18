@@ -22,6 +22,7 @@ func Start(ctx context.Context, c Config, version, toolchain string) error {
 }
 
 func StartPrefetched(ctx context.Context, c Config, version, toolchain string, p *Prefetch) error {
+	defer p.Close()
 	if err := c.Validate(); err != nil {
 		return err
 	}
@@ -61,7 +62,7 @@ func StartPrefetched(ctx context.Context, c Config, version, toolchain string, p
 	var err error
 	if p != nil {
 		select {
-		case <-p.done:
+		case <-p.ready:
 			if p.err != nil {
 				return unavailable(p.err)
 			}
@@ -81,12 +82,19 @@ func StartPrefetched(ctx context.Context, c Config, version, toolchain string, p
 	preparationMS, waitMS := ms(prep), 0.0
 	if p != nil {
 		wait := time.Now()
-		<-p.done
+		select {
+		case <-p.ready:
+		case <-ctx.Done():
+			return unavailable(ctx.Err())
+		}
 		waitMS = ms(wait)
 		if p.err != nil {
 			return unavailable(p.err)
 		}
 		b, s = p.backend, p.state
+		// The downloader still reads its immutable snapshot identities while
+		// this invocation adds local roots and successful restore outcomes.
+		s.Snapshots = append([]Snapshot(nil), p.state.Snapshots...)
 	}
 	if p != nil {
 		for i := range s.Snapshots {
@@ -133,7 +141,7 @@ func StartPrefetched(ctx context.Context, c Config, version, toolchain string, p
 		preparationMS += p.preparationMS
 	}
 	r.PreparationMS = preparationMS
-	r.PrefetchWaitMS = waitMS
+	r.PrefetchWaitMS += waitMS
 	savePolicy := "Post-job save requested; save results appear in the post-job summary."
 	branchSkip := ""
 	if c.Mode == "restore-save" && write {
@@ -149,7 +157,7 @@ func StartPrefetched(ctx context.Context, c Config, version, toolchain string, p
 		savePolicy = "Post-job save disabled: " + branchSkip + "."
 	}
 	summaryReport(c, r, savePolicy)
-	hit := len(r.Snapshots) > 0
+	hit := len(r.Snapshots) > 0 && len(r.Snapshots) == len(s.Snapshots)
 	var keys, matched []string
 	var bytes int64
 	for _, m := range r.Snapshots {

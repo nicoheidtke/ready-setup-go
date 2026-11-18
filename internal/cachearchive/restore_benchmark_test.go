@@ -76,3 +76,37 @@ func BenchmarkRestorePublicationConcurrency(b *testing.B) {
 		})
 	}
 }
+
+// Existing leaf directories force file-by-file publication rather than missing
+// tree moves. Retain this case when measuring private-staging optimizations:
+// whole-tree wins must not conceal their cost on the merge fallback path.
+func BenchmarkRestoreExistingModuleTree(b *testing.B) {
+	base, data := restoreModuleFixture(b)
+	var stageMS, mergeMS float64
+	b.SetBytes(int64(len(data)))
+	b.ResetTimer()
+	for i := range b.N {
+		b.StopTimer()
+		dest := filepath.Join(base, fmt.Sprintf("existing-dest-%d", i))
+		for module := range 32 {
+			name := filepath.Join(dest, "example.org", fmt.Sprintf("module%d@v1.0.0", module), "sub", "package")
+			if err := os.MkdirAll(name, 0755); err != nil {
+				b.Fatal(err)
+			}
+		}
+		b.StartTimer()
+		stats, err := Restore(context.Background(), bytes.NewReader(data), []Root{{"modules", dest}}, Options{RestoreConcurrency: 4})
+		if err != nil {
+			b.Fatal(err)
+		}
+		stageMS += stats.StageMS
+		mergeMS += stats.MergeMS
+		b.StopTimer()
+		if err := os.RemoveAll(dest); err != nil {
+			b.Fatal(err)
+		}
+		b.StartTimer()
+	}
+	b.ReportMetric(stageMS/float64(b.N), "stage-ms/op")
+	b.ReportMetric(mergeMS/float64(b.N), "merge-ms/op")
+}

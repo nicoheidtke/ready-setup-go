@@ -122,7 +122,7 @@ func TestPrefetchReportsDependencyMatchAndAccessDenial(t *testing.T) {
 			p := &Prefetch{state: s, backend: b}
 			p.download(context.Background())
 			defer p.Close()
-			m := p.report.Snapshots[0]
+			m := p.snapshots[0].metric
 			if m.MatchType != tc.want {
 				t.Fatalf("match type %q, want %q", m.MatchType, tc.want)
 			}

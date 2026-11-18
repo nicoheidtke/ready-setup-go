@@ -107,9 +107,17 @@ func TestTreeMoveFallbackAndLateDestination(t *testing.T) {
 			stamp := time.Unix(1700000000, 0)
 			write(t, filepath.Join(stage, "payload"), "deep/file", "archive", 0600, stamp)
 			entries := []entry{
-				{"modules/deep/file", tar.Header{Typeflag: tar.TypeReg, Mode: 0444, ModTime: stamp}},
-				{"modules/deep", tar.Header{Typeflag: tar.TypeDir, Mode: 0555, ModTime: stamp}},
-				{"modules", tar.Header{Typeflag: tar.TypeDir, Mode: 0755, ModTime: stamp}},
+				{name: "modules/deep/file", hdr: tar.Header{Typeflag: tar.TypeReg, Mode: 0444, ModTime: stamp}},
+				{name: "modules/deep", hdr: tar.Header{Typeflag: tar.TypeDir, Mode: 0555, ModTime: stamp}},
+				{name: "modules", hdr: tar.Header{Typeflag: tar.TypeDir, Mode: 0755, ModTime: stamp}},
+			}
+			f, err := os.OpenFile(filepath.Join(stage, "payload/deep/file"), os.O_WRONLY, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			entries[0].stagedMetadata, err = finalizeStagedFile(f, &entries[0].hdr)
+			if err := errors.Join(err, f.Close()); err != nil {
+				t.Fatal(err)
 			}
 			roots := map[string]Root{"modules": {"modules", dest}}
 			stages := map[string]string{"modules": stage}

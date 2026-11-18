@@ -20,8 +20,8 @@ func Restore(ctx context.Context, b Backend, s *State) (Report, error) {
 			r.SkippedReason = err.Error()
 			return r, failure(s.Config, err)
 		}
-		// Sequential mode retains only one staged archive at a time. Overlap mode
-		// prefetches both split snapshots while installation runs.
+		// Sequential mode retains only one staged archive at a time. Prefetched
+		// setup instead pipelines the next download with this archive's restore.
 		one := State{Format: s.Format, Config: s.Config, Snapshots: s.Snapshots[i : i+1]}
 		p := &Prefetch{state: one, backend: b}
 		p.download(ctx)
