@@ -62,25 +62,22 @@ If the Go version you need is already installed, we reuse it. Otherwise, we down
 
 Go makes these choices practical, but using Go doesn't automatically make an action faster. What matters is how long your **whole job** takes, including cache uploads. If you're curious, the [architecture](docs/ARCHITECTURE.md) explains the internals and the [measurement guide](docs/BENCHMARKS.md) explains how to compare them.
 
-## An anecdote from my day job
+## Benchmark
 
-I work on [exasol/exasol-personal](https://github.com/exasol/exasol-personal) in my day job. To try this out, I [forked it](https://github.com/nicoheidtke/exasol-personal), switched actions and adjusted the cache and warmup steps. With warm caches, several jobs finished noticeably sooner. These times include setup and post steps:
+I compared four Go setup configurations in my [Exasol Personal fork](https://github.com/nicoheidtke/exasol-personal), using Go 1.27.4 on GitHub-hosted `ubuntu-24.04` and `windows-2025` runners. The table records complete pipeline elapsed times; each observation links to its workflow run.
 
-| Workflow / job | [Upstream run 43348902097](https://github.com/exasol/exasol-personal/actions/runs/43348902097) | [Upstream run 43442456182](https://github.com/exasol/exasol-personal/actions/runs/43442456182) | [Fork run 43666086120](https://github.com/nicoheidtke/exasol-personal/actions/runs/43666086120) |
-| --- | --- | --- | --- |
-| **Workflow elapsed** | **10m 18s** | **11m 00s** | **5m 51s** |
-| Build (Ubuntu) | 1m 44s | 1m 40s | 39s |
-| Build (Windows) | 2m 35s | 3m 01s | 1m 39s |
-| Unit tests | 2m 41s | 2m 35s | 1m 03s |
-| Launcher tests (Ubuntu) | 2m 09s | 2m 01s | 1m 44s |
-| Launcher tests (Windows) | 5m 08s | 4m 59s | 2m 22s |
-| Go lint | 52s | 1m 24s | 1m 39s |
-| Python lint | 29s | 27s | 28s |
-| SonarQube | 1m 29s | 1m 22s | Skipped |
+| Configuration | Cold | Warm 1 | Warm 2 | Warm 3 | Warm median |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `actions/setup-go` v7.1.0 | [11m 35s](https://github.com/nicoheidtke/exasol-personal/actions/runs/44138265814) | [3m 40s](https://github.com/nicoheidtke/exasol-personal/actions/runs/44146187305) | [3m 59s](https://github.com/nicoheidtke/exasol-personal/actions/runs/44147217831) | [3m 16s](https://github.com/nicoheidtke/exasol-personal/actions/runs/44148365168) | 3m 40s |
+| `ready-setup-go` v2.1.0 | [16m 12s](https://github.com/nicoheidtke/exasol-personal/actions/runs/44388907787) | [2m 50s](https://github.com/nicoheidtke/exasol-personal/actions/runs/44391866535) | [2m 40s](https://github.com/nicoheidtke/exasol-personal/actions/runs/44392882367) | [3m 35s](https://github.com/nicoheidtke/exasol-personal/actions/runs/44406745294) | 2m 50s |
+| `willabides/setup-go-faster` v1.19.0 + `actions/cache` v6.1.0 | [11m 07s](https://github.com/nicoheidtke/exasol-personal/actions/runs/44199244057) | [3m 41s](https://github.com/nicoheidtke/exasol-personal/actions/runs/44201678826) | [2m 58s](https://github.com/nicoheidtke/exasol-personal/actions/runs/44202588895) | [3m 01s](https://github.com/nicoheidtke/exasol-personal/actions/runs/44203558214) | 3m 01s |
+| `cloudx-io/setup-go` v1.0.0 | [14m 05s](https://github.com/nicoheidtke/exasol-personal/actions/runs/44205098656) | [4m 41s](https://github.com/nicoheidtke/exasol-personal/actions/runs/44207413204) | [3m 26s](https://github.com/nicoheidtke/exasol-personal/actions/runs/44208173698) | [4m 12s](https://github.com/nicoheidtke/exasol-personal/actions/runs/44208979971) | 4m 12s |
 
-The upstream used `actions/setup-go` v6.5.0; the fork used `ready-setup-go` v1.0.0 with separate dependency/build caches, zstd compression and matrix scopes. Build and unit-test logs confirmed cache restores; launcher tests had Go caching disabled in the fork.
+Each configuration had one cold run after clearing repository caches, followed by three sequential warm runs with unchanged source and inputs. Application source, workload commands and job dependencies stayed the same across candidates; workflow revisions and cache configurations differed. Restores and saves were checked in the logs.
 
-That's encouraging, but it's **not a controlled comparison**. The runs used different revisions and triggers, I changed surrounding steps, and cache histories and runner load weren't controlled. SonarQube was skipped in the fork, and Go lint was slower, too. So I can't say how much of the improvement came from the action itself, but it's why I'm pursuing this.
+The workflows used compile mode (`full=false`): Go and Terraform linting, coverage-instrumented launcher builds on Linux and Windows, and Linux test compilation with race detection and coverage. Tests were compiled without execution; Python checks were replaced with a placeholder. Elapsed time runs from the first job starting to the last job completing, including setup, cache saves and scheduling between dependent jobs. It excludes the initial queue and pauses between runs.
+
+These are small sequential batches with varying runner load and image versions. The [detailed results](docs/EXASOL_BENCHMARK.md) include setup/post timings, cache entry counts and sizes, and the available download/restore breakdown. See the [benchmark protocol and candidate settings](https://github.com/nicoheidtke/exasol-personal/blob/a03fdf27b115f6fb480958651f70eefe82e78aec/doc/ci-benchmark.md) for configuration details.
 
 ## More details
 
